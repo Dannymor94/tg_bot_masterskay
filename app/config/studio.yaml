@@ -1,0 +1,100 @@
+# Значения бизнес-правил — единственный источник для кода.
+# Смысл каждого блока — docs/DECISIONS.md. Менять значения можно без изменения кода;
+# версию повышать при любом изменении (version пишется в отчёты и задачи).
+# Поля с пометкой «заполняет T-103» берутся из данных YCLIENTS скриптом, а не вручную.
+
+version: 1
+
+studio:
+  name: "Центр практик «Мастерская»"
+  timezone: Europe/Moscow          # Ростов-на-Дону
+  open_hour: 7                     # сайт: ежедневно 07:00–22:00
+  close_hour: 22
+  slot_minutes: 60
+  privacy_policy_url: https://yoga-rostov-mst.ru/privacy
+  booking_widget_url: null         # ссылка на онлайн-запись YCLIENTS; вписывает человек в T-001
+  rent_page_url: https://yoga-rostov-mst.ru/rent
+
+halls:
+  - code: big
+    title: Большой зал
+    area_m2: 70
+    capacity_mats: 20
+    yclients_staff_id: null        # колонка «Большой зал / аренда»; заполняет T-103
+    yclients_resource_ids: []      # ресурс «Большой зал #1»; заполняет T-103
+    price_per_hour: {weekday_before_18: 900, weekday_after_18: 1000, weekend: 1000}
+  - code: small
+    title: Малый зал
+    area_m2: 30
+    capacity_mats: 9
+    yclients_staff_id: null
+    yclients_resource_ids: []
+    price_per_hour: {weekday_before_18: 600, weekday_after_18: 700, weekend: 700}
+  - code: tea
+    title: Чайная
+    area_m2: 45
+    capacity_mats: null            # зал проходной, коврики не используются
+    yclients_staff_id: null
+    yclients_resource_ids: []
+    price_per_hour: {weekday_before_18: 500, weekday_after_18: 600, weekend: 600}
+
+rent:
+  service_title_prefix: "Аренда"   # услуги аренды в YCLIENTS: «Аренда малого зала 1 час» и т.п.
+  renter_lookback_days: 180        # клиент с арендой за этот период считается арендатором
+
+sync:
+  interval_minutes: 5
+  window_days_back: 1
+  window_days_forward: 14
+
+notifications:
+  quiet_hours: {from: "22:00", to: "07:00"}   # ночные события уходят в утреннюю сводку
+  admin_instant_events: [record.created, record.cancelled, record.rescheduled]
+  admin_morning_summary_at: "07:00"
+  teacher_instant_events: [record.created, record.cancelled]   # только по своим занятиям
+
+reminders:
+  client_class_day_before_at: "18:00"
+  teacher_rent_day_before_at: "18:00"
+  skip_if_created_after_reminder_time: true
+
+feedback:
+  after_class_end_minutes: 120
+  low_score_threshold: 3           # оценка ≤ 3 → задача R5
+
+empty_slots:
+  lookback_weeks: 8
+  max_occupied_weeks: 1            # слот «стабильно пустой», если занят не более 1 недели из 8
+  top_windows_in_report: 5
+  owner_report: {weekday: mon, at: "09:00"}
+  teacher_digest: {weekday: mon, at: "10:00"}   # только тем, кто включил подписку
+
+tasks:
+  overdue_ping_minutes: 60         # задача без «Взять» в рабочие часы → повторное уведомление
+  done_ttl_days: 90                # закрытые задачи с текстами удаляются
+  due_minutes:
+    R1_rent_request: 120
+    R2_cannot_come: null           # срок = начало занятия
+    R3_question: 60
+    R4_link_check: 1440
+    R5_low_feedback: 1440
+    R6_offer_empty_slot: 4320
+    R8_manual: null
+
+pilot_targets:                     # критерии успеха 4-недельного пилота
+  weeks: 4
+  linked_clients: 30
+  linked_teachers: 5
+  median_take_minutes: 30          # от создания задачи до «Взять», рабочие часы
+  rsvp_answer_rate: 0.5
+  empty_slot_bookings_via_bot: 2
+
+broadcasts:
+  messages_per_second: 20          # ниже общего лимита Telegram
+  max_text_length: 1024            # подпись к фото в Telegram ограничена
+  ask_news_opt_in_on_start: true
+  segments:                        # имена сегментов для segment(); смысл — ADR-18
+    - clients_all
+    - teachers_all
+    - teachers_renters
+    - everyone
