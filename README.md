@@ -2,7 +2,7 @@
 
 Telegram-бот поверх YCLIENTS для администраторов, клиентов, преподавателей и владельца. В YCLIENTS бот выполняет **только чтение**; запись и отмену выполняет администратор в YCLIENTS.
 
-**Состояние:** документация и план. Рабочий бот, Runner и диспетчер пока **не реализованы**. Автономный процесс — цель разработки, а не уже существующий сервис.
+**Состояние:** документация и план. Рабочий бот пока **не реализован**. Runner, GPT-ревью и диспетчер не входят в этот репозиторий: оркестрация агентов будет общей внешней системой (ADR-23). Пока её нет, Claude Code запускается человеком вручную.
 
 ## Источники истины
 
@@ -14,9 +14,10 @@ Telegram-бот поверх YCLIENTS для администраторов, к�
 - [AGENTS.md](AGENTS.md) и [CLAUDE.md](CLAUDE.md) — правила исполнителей.
 - [docs/REVIEW.md](docs/REVIEW.md) — критерии проверки.
 - [docs/COORDINATOR.md](docs/COORDINATOR.md) — роль координатора.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/CONTRACTS.md](docs/CONTRACTS.md), [docs/AUTONOMY.md](docs/AUTONOMY.md) — границы модулей и путь к автоматизации.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/CONTRACTS.md](docs/CONTRACTS.md), [docs/WORK_PACKAGES.md](docs/WORK_PACKAGES.md) — архитектура, договорённости модулей и параллельная работа.
+- [docs/AUTONOMY.md](docs/AUTONOMY.md) — граница проекта и внешней системы агентов.
 
-## Запуск разработки сейчас (без диспетчера)
+## Запуск разработки сейчас (внешнего диспетчера пока нет)
 
 ```bash
 git clone https://github.com/Dannymor94/tg_bot_masterskay.git
