@@ -1,0 +1,74 @@
+# API_MATRIX — операции YCLIENTS, которые использует бот.
+# kind: read — только чтение (может быть POST, если это поиск). Других kind в MVP нет.
+# status: pending (до T-103) | verified | unavailable.
+# candidates — варианты из документации и открытых SDK; НЕ факт. make spike перебирает их по порядку,
+# первый успешный становится path, остальные удаляются. Код вызывает только verified (тест-сторож, T-102).
+# Для unavailable применяется fallback — без остановки работы и без вопросов человеку.
+
+meta:
+  host: https://api.yclients.ru          # из secrets YCLIENTS_API_HOST; при ошибке spike пробует https://api.yclients.com
+  headers_candidates:
+    Accept: application/vnd.yclients.v2+json
+    Content-Type: application/json
+    Authorization: "Bearer {partner_token}, User {user_token}"
+  page_size: 200
+  rate_limit: pending
+  status: pending
+
+operations:
+  - id: company.get
+    kind: read
+    purpose: Проверка доступа и таймзона филиала
+    candidates: ["GET /api/v1/company/{company_id}"]
+    status: pending
+    evidence: null
+    fallback: таймзона из studio.yaml
+
+  - id: staff.list
+    kind: read
+    purpose: Колонки залов и штатные преподаватели
+    candidates: ["GET /api/v1/company/{company_id}/staff/", "GET /api/v1/staff/{company_id}"]
+    status: pending
+    evidence: null
+    fallback: staff_id залов — по записям аренды; штатного преподавателя привязывают через R4
+
+  - id: services.list
+    kind: read
+    purpose: Услуги аренды (название начинается с «Аренда»)
+    candidates: ["GET /api/v1/company/{company_id}/services/", "GET /api/v1/services/{company_id}"]
+    status: pending
+    evidence: null
+    fallback: название услуги из записи
+
+  - id: records.list
+    kind: read
+    purpose: Записи за период — синхронизация, занятость, напоминания, окна
+    candidates: ["GET /api/v1/records/{company_id}?start_date={from}&end_date={to}&page={page}&count={count}"]
+    params_to_check: [client_id, staff_id, changed_after]
+    status: pending
+    evidence: null
+    fallback: нет — базовая операция
+
+  - id: record.get
+    kind: read
+    purpose: Проверка записи, исчезнувшей из окна
+    candidates: ["GET /api/v1/record/{company_id}/{record_id}"]
+    status: pending
+    evidence: null
+    fallback: считать удалённой после двух подряд синхронизаций без неё
+
+  - id: activities.search
+    kind: read
+    purpose: Групповые события с вместимостью, числом записей и ресурсом
+    candidates: ["GET /api/v1/activity/{company_id}/search?from={from}&till={to}"]
+    status: pending
+    evidence: null
+    fallback: занятия собираются из records.list по activity_id; без числа мест; зал — по соответствию service_id → hall из данных spike
+
+  - id: clients.search_by_phone
+    kind: read
+    purpose: Привязка клиента и арендатора
+    candidates: ["POST /api/v1/company/{company_id}/clients/search", "GET /api/v1/clients/{company_id}?phone={phone}"]
+    status: pending
+    evidence: null
+    fallback: поиск номера среди клиентов записей за 180 дней; иначе R4
