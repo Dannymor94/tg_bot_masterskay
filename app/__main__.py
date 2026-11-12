@@ -6,6 +6,7 @@ from aiogram.client.session.aiohttp import AiohttpSession
 
 from app.jobs.outbox import TelegramSender
 from app.runtime import serve
+from app.services.invites import InviteTokens
 from app.settings import Settings, StudioConfig, load_settings, load_studio
 
 
@@ -15,7 +16,15 @@ async def run(settings: Settings, studio: StudioConfig) -> None:
         timeout=studio.delivery.request_timeout_seconds,
     )
     async with Bot(token=settings.telegram_bot_token.get_secret_value(), session=session) as bot:
-        await serve(studio.runtime.heartbeat_interval_seconds, send=TelegramSender(bot), cfg=studio)
+        tokens = InviteTokens(settings.telegram_bot_token)
+        await serve(
+            studio.runtime.heartbeat_interval_seconds,
+            send=TelegramSender(bot, tokens=tokens),
+            cfg=studio,
+            bot=bot,
+            owner_id=settings.owner_telegram_id,
+            tokens=tokens,
+        )
 
 
 def main() -> int:

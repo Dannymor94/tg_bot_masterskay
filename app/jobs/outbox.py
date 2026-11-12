@@ -23,19 +23,27 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.db.models import kv, outbox
 from app.domain.delivery import delivery_time, retry_time
+from app.services.invites import InviteTokens
 from app.services.telegram_recipients import is_blocked, mark_blocked
 from app.settings import StudioConfig
+from app.texts import ru
 
 Send = Callable[[Mapping[str, Any]], Awaitable[None]]
 COOLDOWN = "outbox:telegram_not_before"
 
 
 class TelegramSender:
-    def __init__(self, bot: Bot):
-        self.bot = bot
+    def __init__(self, bot: Bot, *, tokens: InviteTokens | None = None):
+        self.bot, self.tokens = bot, tokens
 
     async def __call__(self, row: Mapping[str, Any]) -> None:
         payload = row["payload_min"]
+        if row.get("kind") == "rbac.invite":
+            if self.tokens is None:
+                raise ValueError("invite token provider required")
+            token = self.tokens.derive(payload["nonce"]).get_secret_value()
+            username = (await self.bot.me()).username
+            payload = {"text": ru.INVITE_LINK.format(username=username, token=token)}
         if "photo_file_id" in payload:
             await self.bot.send_photo(
                 chat_id=row["telegram_user_id"],

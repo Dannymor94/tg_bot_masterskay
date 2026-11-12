@@ -23,7 +23,7 @@ async def is_blocked(connection: AsyncConnection, telegram_user_id: int) -> bool
                         select(users)
                         .where(
                             users.c.telegram_user_id == telegram_user_id,
-                            users.c.blocked_at.is_not(None),
+                            or_(users.c.blocked_at.is_not(None), users.c.access_revoked.is_(True)),
                         )
                         .exists(),
                     )

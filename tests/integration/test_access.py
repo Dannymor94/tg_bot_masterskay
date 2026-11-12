@@ -71,7 +71,9 @@ def test_service_checks_fresh_roles_and_revocation(access):
             with pytest.raises(AccessDenied):
                 await service.menu(2, "old-button", NOW)
             async with engine.connect() as db:
-                assert (await db.execute(select(outbox.c.state))).scalar_one() == "cancelled"
+                assert (
+                    await db.execute(select(outbox.c.state).where(outbox.c.telegram_user_id == 2))
+                ).scalar_one() == "cancelled"
                 actions = (await db.execute(select(audit_log.c.action))).scalars().all()
                 assert actions == ["owner.bootstrap", "access.revoked"]
         finally:

@@ -156,4 +156,16 @@ class AccessService:
                 .values(state="cancelled")
             )
             await self.audit(db, actor_id, "access.revoked", str(target_id), now)
+            await enqueue(
+                db,
+                OutboxDraft(
+                    telegram_user_id=actor_id,
+                    kind="rbac.revoked",
+                    payload_min={"text": ru.ACCESS_REVOKED.format(user_id=target_id)},
+                    next_attempt_at=now,
+                    dedupe_key=f"rbac:revoked:{target_id}",
+                ),
+                self.cfg,
+                now,
+            )
             return True
