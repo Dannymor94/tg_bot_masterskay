@@ -5,6 +5,7 @@ import json
 import logging
 import math
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from string import Formatter
@@ -21,6 +22,14 @@ from app.integrations.yclients_policy import (
     redact,
 )
 from app.settings import YclientsHTTP
+
+
+@dataclass(frozen=True)
+class DecodedPage:
+    """Internal page contract; the decoder decides completion from confirmed evidence."""
+
+    items: list[JsonValue]
+    has_more: bool
 
 
 class _NoTransportPayloads(logging.Filter):
@@ -42,7 +51,10 @@ class YclientsClient:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ):
-        base = httpx.URL(base_url)
+        try:
+            base = httpx.URL(base_url)
+        except (httpx.InvalidURL, ValueError):
+            raise OperationDenied from None
         if (
             base.scheme != "https"
             or not base.host
@@ -114,6 +126,12 @@ class YclientsClient:
             if method not in {"GET", "POST"}:
                 raise OperationDenied
             inputs = {**values, "company_id": self._company_id}
+            fields = {field for _, field, _, _ in Formatter().parse(target) if field is not None}
+            for _, field, _, _ in Formatter().parse(target.split("?", 1)[0]):
+                if field is not None:
+                    value = str(inputs.get(field, ""))
+                    if not value.isascii() or not value.isdecimal() or int(value) <= 0:
+                        raise OperationDenied
             for _, field, spec, conversion in Formatter().parse(target):
                 if field is not None and (field not in inputs or spec or conversion):
                     raise OperationDenied
@@ -132,7 +150,7 @@ class YclientsClient:
                 or any(part in {".", ".."} for part in path.split("/"))
             ):
                 raise OperationDenied
-            return method, self._base.join(target)
+            return method, self._base.join(target), fields
         except (ValueError, KeyError, IndexError):
             raise OperationDenied from None
 
@@ -147,8 +165,11 @@ class YclientsClient:
                     retry_after = (parsedate_to_datetime(header) - self._now()).total_seconds()
                 except (ValueError, TypeError, OverflowError):
                     retry_after = delay
-            if math.isfinite(retry_after):
-                delay = max(delay, retry_after)
+            if not math.isfinite(retry_after):
+                raise AdapterError(
+                    status_code=response.status_code if response is not None else None
+                )
+            delay = max(delay, retry_after)
             if delay > self._policy.max_retry_delay_seconds:
                 raise AdapterError(
                     status_code=response.status_code if response is not None else None
@@ -163,7 +184,21 @@ class YclientsClient:
         candidate_index: int | None = None,
         body: dict[str, JsonValue] | None = None,
     ) -> JsonValue:
-        method, url = self._route(operation_id, values or {}, candidate_index)
+        return redact(
+            await self._request_json(
+                operation_id, values, candidate_index=candidate_index, body=body
+            )
+        )
+
+    async def _request_json(
+        self,
+        operation_id: str,
+        values: Mapping[str, str | int] | None = None,
+        *,
+        candidate_index: int | None = None,
+        body: dict[str, JsonValue] | None = None,
+    ) -> JsonValue:
+        method, url, _ = self._route(operation_id, values or {}, candidate_index)
         if body is not None and method != "POST":
             raise OperationDenied
         for attempt in range(len(self._policy.retry_backoff_seconds) + 1):
@@ -176,7 +211,7 @@ class YclientsClient:
                 status = response.status_code
                 if response.is_success:
                     try:
-                        return redact(response.json())
+                        return response.json()
                     except (json.JSONDecodeError, UnicodeError):
                         raise AdapterError(status_code=status) from None
                 if status != 429 and not response.is_server_error:
@@ -186,4 +221,42 @@ class YclientsClient:
                     status_code=response.status_code if response is not None else None
                 )
             await self._sleep(self._delay(response, attempt))
+        raise AdapterError
+
+    async def paginate(
+        self,
+        operation_id: str,
+        values: Mapping[str, str | int] | None = None,
+        *,
+        decode_page: Callable[[JsonValue], DecodedPage],
+        candidate_index: int | None = None,
+        body: dict[str, JsonValue] | None = None,
+    ) -> list[JsonValue]:
+        count = self._matrix.meta.page_size
+        if count is None or count <= 0:
+            raise OperationDenied
+        inputs = {**(values or {}), "page": 1, "count": count}
+        _, _, fields = self._route(operation_id, inputs, candidate_index)
+        if not {"page", "count"}.issubset(fields):
+            raise OperationDenied
+        result: list[JsonValue] = []
+        for page in range(1, self._policy.max_pages + 1):
+            response = await self._request_json(
+                operation_id, {**inputs, "page": page}, candidate_index=candidate_index, body=body
+            )
+            try:
+                decoded = decode_page(response)
+                if (
+                    not isinstance(decoded, DecodedPage)
+                    or not isinstance(decoded.items, list)
+                    or not isinstance(decoded.has_more, bool)
+                    or len(decoded.items) > count
+                ):
+                    raise ValueError
+            except Exception:
+                raise AdapterError from None
+            result.extend(redact(item) for item in decoded.items)
+            if not decoded.has_more:
+                return result
+        # A bounded failure, never silent truncation or partial success.
         raise AdapterError
