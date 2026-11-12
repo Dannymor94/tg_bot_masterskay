@@ -3,7 +3,13 @@
 # версию повышать при любом изменении (version пишется в отчёты и задачи).
 # Поля с пометкой «заполняет T-103» берутся из данных YCLIENTS скриптом, а не вручную.
 
-version: 2
+version: 4
+
+yclients_http:
+  timeout_seconds: 10
+  retry_backoff_seconds: [1, 2, 4]   # три повтора после первой попытки
+  max_retry_delay_seconds: 60       # больший Retry-After: завершить вызов, не нарушая паузу
+  max_pages: 1000
 
 runtime:
   heartbeat_interval_seconds: 30
@@ -102,3 +108,8 @@ broadcasts:
     - teachers_all
     - teachers_renters
     - everyone
+delivery:
+  poll_seconds: 1
+  request_timeout_seconds: 3  # меньше SQLite busy timeout (5 секунд)
+  backoff_base_seconds: 5
+  backoff_max_seconds: 3600

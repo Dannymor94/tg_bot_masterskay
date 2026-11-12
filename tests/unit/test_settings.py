@@ -75,3 +75,26 @@ def test_optional_proxy_empty(tmp_path, credentials, monkeypatch):
         monkeypatch.setenv(name, value)
     monkeypatch.setenv("TELEGRAM_PROXY_URL", "")
     assert load_settings(tmp_path / "absent").telegram_proxy_url is None
+
+
+def test_combined_t102_t105_config():
+    config = load_studio()
+    assert config.version >= 4
+    assert config.yclients_http.timeout_seconds > 0
+    assert config.yclients_http.retry_backoff_seconds
+    assert config.delivery.request_timeout_seconds > 0
+    assert StudioConfig.model_validate(config.model_dump(by_alias=True)) == config
+
+
+@pytest.mark.parametrize(
+    "section,field",
+    [
+        ("yclients_http", "timeout_seconds"),
+        ("delivery", "request_timeout_seconds"),
+    ],
+)
+def test_combined_config_validates_both_sections(section, field):
+    values = load_studio().model_dump(by_alias=True)
+    values[section][field] = 0
+    with pytest.raises(ValidationError):
+        StudioConfig.model_validate(values)
