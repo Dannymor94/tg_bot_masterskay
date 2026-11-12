@@ -16,7 +16,18 @@
 | `segment(users, name)` | Пользователи + сегмент → Telegram ID | `news_opt_in` для анонсов |
 | `can(user, action, target)` | Субъект + операция + объект → bool | Default deny, проверяется в сервисе |
 
-Точные сигнатуры/Pydantic DTO фиксирует T-101 перед параллельной реализацией и покрывает контрактными тестами. Не считать данные этих таблиц схемой внешнего API.
+T-101 фиксирует общие Pydantic DTO в `app/domain/models.py`: `RecordSnapshot`, `DomainEvent`, `TaskDraft`, `OutboxDraft`, `User`, `Interval`. Это внутренние модели, не схема внешнего API. Все интервалы полуоткрытые `[starts_at, ends_at)`, время aware; в SQLite сохраняется UTC. Owner — флаг пользователя, роль — client/teacher/admin. Строковые коды залов берутся из YAML.
+
+Зафиксированные границы для следующих задач:
+
+- T-102 возвращает обезличенные JSON-ответы операций API_MATRIX; преобразование в `RecordSnapshot` делает T-104 после fixtures T-103.
+- `diff(prev: Mapping[int, RecordSnapshot], cur: Mapping[int, RecordSnapshot]) -> list[DomainEvent]`; время события берётся из `seen_at` текущего снимка.
+- `rules(event: DomainEvent, cfg: StudioConfig) -> tuple[list[TaskDraft], list[OutboxDraft]]`.
+- `can(user: User, action: str, target: RecordSnapshot | User | None) -> bool`.
+- `segment(users: Sequence[User], name: str) -> list[int]`.
+- T-105 принимает `OutboxDraft`, использует `outbox` и `kv` из `app/db/models.py`; создание задачи/события/сообщения выполняется одной транзакцией вызывающего сервиса.
+
+DTO расписания, занятости и привязки телефона уточняются в своих задачах по подтверждённым fixtures; T-101 не вводит неподтверждённые поля. Модели БД — SQLAlchemy Core `Table`, общий `metadata`; async engine создаётся через `app.db.engine.create_db`.
 
 ## Адаптер YCLIENTS
 
