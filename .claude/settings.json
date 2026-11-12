@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(**/secrets.env)", "Read(**/.env)", "Read(**/.env.*)",
+      "Read(**/*.pem)", "Read(**/*.key)", "Read(**/*.p12)",
+      "Read(~/.config/studio-bot/**)",
+      "Bash(printenv*)", "Bash(env*)", "Bash(docker compose config*)",
+      "Bash(docker inspect*)", "Bash(git push*)", "Bash(git merge*)",
+      "Bash(git reset --hard*)"
+    ]
+  }
+}

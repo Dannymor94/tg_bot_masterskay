@@ -3,7 +3,11 @@
 # версию повышать при любом изменении (version пишется в отчёты и задачи).
 # Поля с пометкой «заполняет T-103» берутся из данных YCLIENTS скриптом, а не вручную.
 
-version: 1
+version: 2
+
+runtime:
+  heartbeat_interval_seconds: 30
+  heartbeat_max_age_seconds: 90
 
 studio:
   name: "Центр практик «Мастерская»"
