@@ -54,6 +54,8 @@ def occupancy(
         if activity.hall_code is not None:
             if activity.hall_code not in by_code:
                 raise ValueError("activity references an unverified hall")
+            if matched and activity.hall_code not in matched:
+                raise ValueError("activity resource conflicts with verified hall")
             matched.add(activity.hall_code)
         if not matched:
             raise ValueError("group event lacks a verified hall mapping")

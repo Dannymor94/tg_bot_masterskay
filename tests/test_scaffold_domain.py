@@ -122,6 +122,11 @@ class OccupancyTests(unittest.TestCase):
         activity = Activity(START, START + timedelta(hours=1), frozenset(), hall_code="big")
         self.assertEqual(len(self.busy([], [activity]).intervals), 1)
 
+    def test_reject_activity_mapping_conflict(self):
+        activity = Activity(START, START + timedelta(hours=1), frozenset({201}), hall_code="small")
+        with self.assertRaises(ValueError):
+            self.busy([], [activity])
+
     def test_reject_unknown_group_hall(self):
         activity = Activity(START, START + timedelta(hours=1), frozenset())
         with self.assertRaises(ValueError):

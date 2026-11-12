@@ -26,10 +26,10 @@ class Record:
     client_id: int | None = None
     staff_id: int | None = None
     activity_id: int | None = None
-    service_id: int | None = None
     hall_code: str | None = None
-    kind: RecordKind = "unknown"
     cancelled: bool = False
+    service_id: int | None = None
+    kind: RecordKind = "unknown"
 
     def __post_init__(self) -> None:
         if isinstance(self.record_id, bool) or self.record_id <= 0:
@@ -63,8 +63,8 @@ class Activity:
     starts_at: datetime
     ends_at: datetime
     resource_ids: frozenset[int]
-    hall_code: str | None = None  # trusted internal mapping via verified fallback
     cancelled: bool = False
+    hall_code: str | None = None  # trusted internal mapping via verified fallback
 
     def __post_init__(self) -> None:
         require_interval(self.starts_at, self.ends_at)
