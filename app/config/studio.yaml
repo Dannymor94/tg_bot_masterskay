@@ -3,7 +3,12 @@
 # версию повышать при любом изменении (version пишется в отчёты и задачи).
 # Поля с пометкой «заполняет T-103» берутся из данных YCLIENTS скриптом, а не вручную.
 
-version: 4
+version: 5
+
+access:
+  teacher_invite_hours: 24
+  admin_invite_hours: 24
+  token_bytes: 32
 
 yclients_http:
   timeout_seconds: 10
