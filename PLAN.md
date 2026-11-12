@@ -103,7 +103,7 @@
 - [ ] **T-101 · AGENT · —** Каркас по разделам 2–4: uv, Makefile, ruff, pyright, pytest, SQLite + Alembic (первая миграция со всеми таблицами), загрузка secrets и валидация `studio.yaml` (pydantic), `python -m app` с heartbeat в `kv`, `make health`, Dockerfile + compose (один сервис, volume `data/`), тест-сторож импортов domain. **Читать:** ADR-03, ADR-07. **Готово:** чистый клон → `make check` зелёный; `make run` без токенов завершается понятной ошибкой «нет переменной X».
   - [x] **T-101a · AGENT · —** Инструменты, настройки и валидация конфигурации, защитные правила Claude Code.
   - [x] **T-101b · AGENT · T-101a** Все модели SQLite и контракты общих DTO.
-  - [ ] **T-101c · AGENT · T-101b** Первая миграция всех таблиц и интеграционные тесты БД.
+  - [x] **T-101c · AGENT · T-101b** Первая миграция всех таблиц и интеграционные тесты БД.
   - [ ] **T-101d · AGENT · T-101c** Heartbeat, health, Docker, тесты и итоговый `make check`.
 - [ ] **T-102 · AGENT · T-101 · [R]** Адаптер YCLIENTS: заголовки и пути из `candidates` API_MATRIX, пагинация, таймауты, 3 повтора с backoff, `redact()`; тест-сторож: операция не `verified` и не `kind: read` → исключение (для spike — флаг `allow_pending`). **Читать:** API_MATRIX. **Готово:** unit-тесты на respx.
 - [ ] **T-103 · AGENT пишет, HUMAN запускает · T-001, T-102 · [R]** `make spike`: для каждой операции перебирает кандидатов, сохраняет первый успешный ответ **обезличенным** в `tests/fixtures/yclients/`, печатает только коды ответов и итоговый YAML-патч для API_MATRIX и `studio.yaml` (staff_id и resource_ids залов). Агент применяет патч. **Читать:** API_MATRIX, CONTEXT §3. **Готово:** в API_MATRIX нет `pending`; у залов в studio.yaml нет `null`; в fixtures нет имён и телефонов (тест).
