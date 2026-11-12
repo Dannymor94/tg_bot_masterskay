@@ -38,6 +38,7 @@ users = table(
     C("tg_first_name", String),
     C("role", String, nullable=False),
     C("is_owner", Boolean, nullable=False, server_default="0"),
+    C("access_revoked", Boolean, nullable=False, server_default="0"),
     C("teacher_kind", String),
     C("yclients_client_id", Integer),
     C("yclients_staff_id", Integer),
