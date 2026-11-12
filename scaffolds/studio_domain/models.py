@@ -1,9 +1,12 @@
-"""Normalized INTERNAL models: these are not YCLIENTS API response fields."""
+"""Verified INTERNAL normalized values, never raw YCLIENTS response fields."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
+
+RecordKind = Literal["rental", "class", "unknown"]
 
 
 def require_interval(start: datetime, end: datetime) -> None:
@@ -23,12 +26,16 @@ class Record:
     client_id: int | None = None
     staff_id: int | None = None
     activity_id: int | None = None
+    service_id: int | None = None
     hall_code: str | None = None
+    kind: RecordKind = "unknown"
     cancelled: bool = False
 
     def __post_init__(self) -> None:
-        if self.record_id <= 0:
+        if isinstance(self.record_id, bool) or self.record_id <= 0:
             raise ValueError("record_id must be positive")
+        if self.kind not in ("rental", "class", "unknown"):
+            raise ValueError("invalid normalized record kind")
         require_interval(self.starts_at, self.ends_at)
 
 
@@ -40,12 +47,15 @@ class Hall:
     weekday_before_18: int
     weekday_after_18: int
     weekend: int
+    mapping_verified: bool = False
 
     def __post_init__(self) -> None:
         if not self.code:
             raise ValueError("hall code is required")
         if min(self.weekday_before_18, self.weekday_after_18, self.weekend) < 0:
             raise ValueError("prices cannot be negative")
+        if self.mapping_verified and self.staff_id is None and not self.resource_ids:
+            raise ValueError("verified hall must have a staff/resource mapping")
 
 
 @dataclass(frozen=True)
@@ -66,4 +76,14 @@ class Interval:
     ends_at: datetime
 
     def __post_init__(self) -> None:
+        if not self.hall_code:
+            raise ValueError("hall code is required")
         require_interval(self.starts_at, self.ends_at)
+
+
+@dataclass(frozen=True)
+class OccupancyResult:
+    """Only built by occupancy() once verified API coverage has been asserted."""
+
+    intervals: tuple[Interval, ...]
+    hall_codes: frozenset[str]

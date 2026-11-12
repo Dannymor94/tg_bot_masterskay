@@ -1,8 +1,11 @@
-"""Default-deny RBAC examples. Check again in every service call."""
+"""Default-deny starter RBAC; the service must load a trusted target."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
+
+RecordKind = Literal["rental", "class", "unknown"]
 
 
 @dataclass(frozen=True)
@@ -20,20 +23,18 @@ class Target:
     telegram_user_id: int | None = None
     client_id: int | None = None
     staff_id: int | None = None
+    record_kind: RecordKind = "unknown"  # trusted classification, never from callback
 
 
 def can(actor: Actor, action: str, target: Target | None = None) -> bool:
-    """Minimal starter matrix; complete action table in T-201."""
+    """Minimal action matrix; T-201 completes it and checks it in services."""
     if actor.telegram_user_id <= 0 or actor.role not in {"client", "teacher", "admin"}:
         return False
     if actor.is_owner and actor.role != "admin":
         return False
-
     if action == "schedule.view":
         return True
-    if action in {"task.take", "task.done", "task.reply", "broadcast.send"}:
-        return actor.role == "admin"
-    if action == "invite.teacher":
+    if action in {"task.take", "task.done", "task.reply", "broadcast.send", "invite.teacher"}:
         return actor.role == "admin"
     if action in {"invite.admin", "admin.revoke"}:
         return actor.role == "admin" and actor.is_owner
@@ -47,7 +48,15 @@ def can(actor: Actor, action: str, target: Target | None = None) -> bool:
         if actor.role == "client":
             return actor.yclients_client_id is not None and target.client_id == actor.yclients_client_id
         if actor.teacher_kind == "staff":
-            return actor.yclients_staff_id is not None and target.staff_id == actor.yclients_staff_id
+            return (
+                target.record_kind == "class"
+                and actor.yclients_staff_id is not None
+                and target.staff_id == actor.yclients_staff_id
+            )
         if actor.teacher_kind == "renter":
-            return actor.yclients_client_id is not None and target.client_id == actor.yclients_client_id
+            return (
+                target.record_kind == "rental"
+                and actor.yclients_client_id is not None
+                and target.client_id == actor.yclients_client_id
+            )
     return False

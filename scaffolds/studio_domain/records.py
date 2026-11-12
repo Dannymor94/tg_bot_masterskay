@@ -1,10 +1,11 @@
-"""Deterministic record delta detection; never infer deletion from absence."""
+"""Pure record transitions; occurrence numbers are supplied by durable sync state."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from hashlib import sha256
 from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import timezone
+from hashlib import sha256
 
 from .models import Record
 
@@ -13,54 +14,59 @@ from .models import Record
 class Event:
     kind: str
     record_id: int
+    occurrence: int
     dedupe_key: str
 
 
 def _index(records: Iterable[Record]) -> dict[int, Record]:
-    result: dict[int, Record] = {}
+    indexed: dict[int, Record] = {}
     for record in records:
-        if record.record_id in result:
+        if record.record_id in indexed:
             raise ValueError(f"duplicate record_id {record.record_id}")
-        result[record.record_id] = record
-    return result
+        indexed[record.record_id] = record
+    return indexed
 
 
-def _event(kind: str, before: Record | None, after: Record) -> Event:
-    # Includes transition fields so a genuine later reschedule produces a new key.
-    raw = "|".join(
-        [
-            kind,
-            str(after.record_id),
-            before.starts_at.isoformat() if before else "",
-            before.ends_at.isoformat() if before else "",
-            after.starts_at.isoformat(),
-            after.ends_at.isoformat(),
-        ]
+def _fingerprint(record: Record) -> tuple[object, ...]:
+    """Normalized business identity; stable across UTC/local representations."""
+    return (
+        record.starts_at.astimezone(timezone.utc).isoformat(),
+        record.ends_at.astimezone(timezone.utc).isoformat(),
+        record.client_id, record.staff_id, record.activity_id,
+        record.service_id, record.hall_code, record.kind, record.cancelled,
     )
-    return Event(kind, after.record_id, sha256(raw.encode()).hexdigest())
 
 
-def diff(previous: Iterable[Record], current: Iterable[Record]) -> tuple[Event, ...]:
-    """Compare complete *normalized* snapshots from an identical window.
+def _event(kind: str, record: Record, occurrence: int) -> Event:
+    raw = f"{occurrence}|{record.record_id}|{kind}"
+    return Event(kind, record.record_id, occurrence, sha256(raw.encode()).hexdigest())
 
-    Missing record IDs deliberately produce no cancellation. The T-104 sync
-    service must confirm deletion via verified record.get or fallback before
-    constructing an explicit cancelled record.
+
+def diff(
+    previous: Iterable[Record], current: Iterable[Record], *, occurrence: int
+) -> tuple[Event, ...]:
+    """Compare two complete normalized snapshots of the same sync window.
+
+    occurrence is a positive, durable transition sequence provided by T-104.
+    Persist the sequence, event(s), snapshots and outbox atomically; reuse the
+    same sequence for retries of that transaction. Increment for the next
+    committed set of changes. This is NOT an API/YCLIENTS revision field.
+    Missing rows never imply cancellation: verify via record.get/fallback.
     """
+    if isinstance(occurrence, bool) or not isinstance(occurrence, int) or occurrence <= 0:
+        raise ValueError("occurrence must be a positive durable integer")
     before, after = _index(previous), _index(current)
     events: list[Event] = []
     for record_id in sorted(after):
-        new = after[record_id]
-        old = before.get(record_id)
+        new, old = after[record_id], before.get(record_id)
         if old is None:
             if not new.cancelled:
-                events.append(_event("record.created", None, new))
+                events.append(_event("record.created", new, occurrence))
         elif not old.cancelled and new.cancelled:
-            events.append(_event("record.cancelled", old, new))
+            events.append(_event("record.cancelled", new, occurrence))
         elif old.cancelled and not new.cancelled:
-            events.append(_event("record.created", old, new))
-        elif not new.cancelled and (
-            old.starts_at != new.starts_at or old.ends_at != new.ends_at
-        ):
-            events.append(_event("record.rescheduled", old, new))
+            events.append(_event("record.created", new, occurrence))
+        elif not new.cancelled and _fingerprint(old) != _fingerprint(new):
+            # Matches product notification codes; includes move between halls.
+            events.append(_event("record.rescheduled", new, occurrence))
     return tuple(events)

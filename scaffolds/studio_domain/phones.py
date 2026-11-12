@@ -1,16 +1,16 @@
-"""Pure Russian phone matching, with no logging or persistence of raw numbers."""
+"""Pure Russian phone matching; never log or persist input phone values."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class Candidate:
-    phone: str  # ephemeral, never log/store in bot DB
+    phone: str  # ephemeral, from verified API response only
     external_id: int
-    kind: str  # client | staff | renter
+    kind: str  # client | staff | renter, renter status proven by service
 
 
 @dataclass(frozen=True)
@@ -32,17 +32,25 @@ def _russian_phone(value: str) -> str:
 
 
 def match_phone(value: str, candidates: Iterable[Candidate], *, teacher: bool = False) -> Match:
-    """Teacher match prioritizes staff, then renter. Client path matches clients only.
+    """Fail invalid *request*, skip malformed candidates; duplicates mean R4.
 
-    Different matching IDs at the same priority are ambiguous: send to R4.
+    For teachers, staff wins over renter per ADR-10; service must prove that
+    a 'renter' has an actual rental within the last 180 days.
     """
     phone = _russian_phone(value)
-    matches = [c for c in candidates if _russian_phone(c.phone) == phone]
-    preferred_kinds = ("staff", "renter") if teacher else ("client",)
-    for kind in preferred_kinds:
+    matches: list[Candidate] = []
+    for candidate in candidates:
+        try:
+            candidate_phone = _russian_phone(candidate.phone)
+        except (ValueError, TypeError):
+            continue
+        if candidate_phone == phone:
+            matches.append(candidate)
+    preferred = ("staff", "renter") if teacher else ("client",)
+    for kind in preferred:
         ids = sorted({c.external_id for c in matches if c.kind == kind and c.external_id > 0})
-        if len(ids) == 1:
-            return Match("unique", kind, ids[0])
         if len(ids) > 1:
             return Match("ambiguous")
+        if len(ids) == 1:
+            return Match("unique", kind, ids[0])
     return Match("none")
