@@ -1,6 +1,6 @@
 """Normalized internal DTOs, independent of the YCLIENTS wire format."""
 
-from datetime import UTC, datetime
+from datetime import UTC
 from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, model_validator
@@ -71,4 +71,4 @@ class User(DTO):
     yclients_staff_id: int | None = None
     news_opt_in: bool = False
     slot_digest_enabled: bool = False
-    blocked_at: datetime | None = None
+    blocked_at: AwareDatetime | None = None
