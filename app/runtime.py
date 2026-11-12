@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from alembic import command
 from app.db.engine import DB_PATH, create_db
 from app.db.models import kv
+from app.jobs.outbox import Send
+from app.jobs.runner import run_jobs
+from app.settings import StudioConfig
 
 
 def migrate(path: Path = DB_PATH) -> None:
@@ -27,7 +30,13 @@ async def heartbeat(engine: AsyncEngine, now: datetime) -> None:
         )
 
 
-async def serve(interval_seconds: int, path: Path = DB_PATH) -> None:
+async def serve(
+    interval_seconds: int,
+    path: Path = DB_PATH,
+    *,
+    send: Send | None = None,
+    cfg: StudioConfig | None = None,
+) -> None:
     await asyncio.to_thread(migrate, path)
     engine = create_db(path)
     stopped = asyncio.Event()
@@ -35,12 +44,15 @@ async def serve(interval_seconds: int, path: Path = DB_PATH) -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stopped.set)
     try:
-        while not stopped.is_set():
-            await heartbeat(engine, datetime.now(UTC))
-            try:
-                await asyncio.wait_for(stopped.wait(), timeout=interval_seconds)
-            except TimeoutError:
-                pass
+        async with asyncio.TaskGroup() as group:
+            if send is not None and cfg is not None:
+                group.create_task(run_jobs(engine, send, cfg, stopped))
+            while not stopped.is_set():
+                await heartbeat(engine, datetime.now(UTC))
+                try:
+                    await asyncio.wait_for(stopped.wait(), timeout=interval_seconds)
+                except TimeoutError:
+                    pass
     finally:
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.remove_signal_handler(sig)
