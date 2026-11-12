@@ -3,7 +3,13 @@
 # версию повышать при любом изменении (version пишется в отчёты и задачи).
 # Поля с пометкой «заполняет T-103» берутся из данных YCLIENTS скриптом, а не вручную.
 
-version: 2
+version: 3
+
+yclients_http:
+  timeout_seconds: 10
+  retry_backoff_seconds: [1, 2, 4]   # три повтора после первой попытки
+  max_retry_delay_seconds: 60       # больший Retry-After: завершить вызов, не нарушая паузу
+  max_pages: 1000
 
 runtime:
   heartbeat_interval_seconds: 30

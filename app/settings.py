@@ -147,9 +147,17 @@ class Runtime(Model):
         return self
 
 
+class YclientsHTTP(Model):
+    timeout_seconds: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+    retry_backoff_seconds: tuple[Annotated[float, Field(ge=0, allow_inf_nan=False)], ...]
+    max_retry_delay_seconds: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+    max_pages: Positive
+
+
 class StudioConfig(Model):
     version: Positive
     runtime: Runtime
+    yclients_http: YclientsHTTP
     studio: Studio
     halls: list[Hall] = Field(min_length=1)
     rent: Rent
