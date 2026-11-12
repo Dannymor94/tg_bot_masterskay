@@ -102,3 +102,8 @@ broadcasts:
     - teachers_all
     - teachers_renters
     - everyone
+delivery:
+  poll_seconds: 1
+  request_timeout_seconds: 3  # меньше SQLite busy timeout (5 секунд)
+  backoff_base_seconds: 5
+  backoff_max_seconds: 3600
