@@ -68,3 +68,10 @@ def test_claude_protection_rules():
     assert "Read(**/secrets.env)" in denies
     assert "Read(~/.config/studio-bot/**)" in denies
     assert "Bash(docker compose config*)" in denies
+
+
+def test_optional_proxy_empty(tmp_path, credentials, monkeypatch):
+    for name, value in credentials.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("TELEGRAM_PROXY_URL", "")
+    assert load_settings(tmp_path / "absent").telegram_proxy_url is None

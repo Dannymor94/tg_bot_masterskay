@@ -10,6 +10,7 @@ from pydantic import (
     HttpUrl,
     SecretStr,
     ValidationError,
+    field_validator,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -135,8 +136,20 @@ class Broadcasts(Model):
     segments: list[str]
 
 
+class Runtime(Model):
+    heartbeat_interval_seconds: Positive
+    heartbeat_max_age_seconds: Positive
+
+    @model_validator(mode="after")
+    def validate_age(self) -> "Runtime":
+        if self.heartbeat_max_age_seconds <= self.heartbeat_interval_seconds:
+            raise ValueError("heartbeat_max_age_seconds <= heartbeat_interval_seconds")
+        return self
+
+
 class StudioConfig(Model):
     version: Positive
+    runtime: Runtime
     studio: Studio
     halls: list[Hall] = Field(min_length=1)
     rent: Rent
@@ -165,6 +178,11 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr = Field(min_length=1)
     owner_telegram_id: Positive
     telegram_proxy_url: HttpUrl | None = None
+
+    @field_validator("telegram_proxy_url", mode="before")
+    @classmethod
+    def empty_proxy(cls, value: object) -> object:
+        return None if value == "" else value
 
 
 def load_settings(secrets_path: Path = SECRETS_PATH) -> Settings:

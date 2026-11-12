@@ -1,0 +1,10 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - ${HOME}/.config/studio-bot/secrets.env
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: [CMD, .venv/bin/python, -m, app.health]
