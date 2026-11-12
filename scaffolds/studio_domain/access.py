@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
-
-RecordKind = Literal["rental", "class", "unknown"]
+from .models import RecordKind
 
 
 @dataclass(frozen=True)
