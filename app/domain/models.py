@@ -66,6 +66,7 @@ class User(DTO):
     telegram_user_id: int
     role: Role
     is_owner: bool = False
+    access_revoked: bool = False
     teacher_kind: Literal["staff", "renter"] | None = None
     yclients_client_id: int | None = None
     yclients_staff_id: int | None = None

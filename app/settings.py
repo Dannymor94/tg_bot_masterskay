@@ -161,7 +161,14 @@ class YclientsHTTP(Model):
     max_pages: Positive
 
 
+class AccessConfig(Model):
+    teacher_invite_hours: Literal[24]
+    admin_invite_hours: Positive
+    token_bytes: Annotated[int, Field(ge=32)]
+
+
 class StudioConfig(Model):
+    access: AccessConfig
     version: Positive
     delivery: Delivery
     yclients_http: YclientsHTTP
