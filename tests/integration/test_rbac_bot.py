@@ -57,6 +57,19 @@ def test_commands_identity_and_outbox_only(tmp_path):
                 }
             )
             await dispatcher.feed_update(bot, group)
+            assert original.message.from_user is not None
+            bot_origin = original.model_copy(
+                update={
+                    "message": original.message.model_copy(
+                        update={
+                            "from_user": original.message.from_user.model_copy(
+                                update={"is_bot": True}
+                            )
+                        }
+                    )
+                }
+            )
+            await dispatcher.feed_update(bot, bot_origin)
             await dispatcher.feed_update(bot, update(2, "/invite admin"))
             async with engine.connect() as db:
                 assert (await db.execute(select(invites))).all() == []
