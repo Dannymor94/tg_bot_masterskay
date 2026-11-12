@@ -63,6 +63,7 @@ class Activity:
     starts_at: datetime
     ends_at: datetime
     resource_ids: frozenset[int]
+    hall_code: str | None = None  # trusted internal mapping via verified fallback
     cancelled: bool = False
 
     def __post_init__(self) -> None:

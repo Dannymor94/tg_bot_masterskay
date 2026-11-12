@@ -6,7 +6,7 @@
 
 - `models.py`: внутренние нормализованные типы `Record`, `Hall`, `Activity`, `Interval`, `OccupancyResult`; не копировать как внешнюю схему API.
 - `records.py`: `diff(previous, current, occurrence=...)`; фиксирует создание, отмену, перенос времени/зала/преподавателя/услуги.
-- `occupancy.py`: `occupancy(..., records_complete=True, activities_complete=True)` после проверки полноты через адаптер; `free_slots` работает только с проверенным `OccupancyResult`, `price` использует явную студийную `ZoneInfo`.
+- `occupancy.py`: `occupancy(..., records_complete=True, activities_complete=True)` после проверки полноты через адаптер; `free_slots` работает только с проверенным `OccupancyResult`, `price` использует явную студийную `ZoneInfo`. Подтверждённый fallback может указать `hall_code` в нормализованной записи/событии без ресурса; неизвестный или противоречивый зал вызывает ошибку.
 - `windows.py`: 8 последовательных недель с `complete=True` и проверенным маппингом зала; параметры/цены брать из `studio.yaml`.
 - `access.py`: начальная таблица RBAC. Арендатор видит только собственную запись типа `rental`, преподаватель — свою запись типа `class`. `Target` сервис должен построить из доверенной записи, **не** из Telegram callback.
 - `phones.py`: нормализация и 0/1/несколько совпадений, некорректные кандидаты пропускаются, введённый номер проверяется; роль арендатора подтверждает T-301 по истории аренды.

@@ -26,23 +26,39 @@ def occupancy(
         raise ValueError("halls must be nonempty and unique")
     if not all(hall.mapping_verified for hall in hall_list):
         raise ValueError("unverified hall mapping")
+    by_code = {hall.code: hall for hall in hall_list}
+    staff_codes = [hall.staff_id for hall in hall_list if hall.staff_id is not None]
+    if len(set(staff_codes)) != len(staff_codes):
+        raise ValueError("hall staff columns must be unique")
     intervals: set[Interval] = set()
     for record in records:
         if record.cancelled:
             continue
-        matched = False
-        for hall in hall_list:
-            if hall.staff_id is not None and record.staff_id == hall.staff_id:
-                intervals.add(Interval(hall.code, record.starts_at, record.ends_at))
-                matched = True
+        matched = {hall.code for hall in hall_list if hall.staff_id is not None and record.staff_id == hall.staff_id}
+        if record.hall_code is not None:
+            if record.hall_code not in by_code:
+                raise ValueError("record references an unverified hall")
+            if matched and record.hall_code not in matched:
+                raise ValueError("record hall does not match hall column")
+            matched.add(record.hall_code)
         if record.kind == "rental" and not matched:
             raise ValueError("rental record without verified hall mapping")
+        if record.kind == "unknown" and matched:
+            raise ValueError("occupancy record has unverified kind")
+        for code in matched:
+            intervals.add(Interval(code, record.starts_at, record.ends_at))
     for activity in activities:
         if activity.cancelled:
             continue
-        for hall in hall_list:
-            if hall.resource_ids & activity.resource_ids:
-                intervals.add(Interval(hall.code, activity.starts_at, activity.ends_at))
+        matched = {hall.code for hall in hall_list if hall.resource_ids & activity.resource_ids}
+        if activity.hall_code is not None:
+            if activity.hall_code not in by_code:
+                raise ValueError("activity references an unverified hall")
+            matched.add(activity.hall_code)
+        if not matched:
+            raise ValueError("group event lacks a verified hall mapping")
+        for code in matched:
+            intervals.add(Interval(code, activity.starts_at, activity.ends_at))
     return OccupancyResult(
         tuple(sorted(intervals, key=lambda x: (x.hall_code, x.starts_at, x.ends_at))),
         frozenset(hall.code for hall in hall_list),

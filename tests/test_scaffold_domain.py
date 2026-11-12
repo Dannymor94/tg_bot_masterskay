@@ -114,6 +114,23 @@ class OccupancyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             free_slots(self.busy(), "small", START, START + timedelta(hours=1))
 
+    def test_verified_group_fallback_from_record_hall(self):
+        group = record(record_id=9, staff_id=903, hall_code="big", kind="class")
+        self.assertEqual(len(self.busy([group]).intervals), 1)
+
+    def test_verified_group_fallback_from_activity_hall(self):
+        activity = Activity(START, START + timedelta(hours=1), frozenset(), hall_code="big")
+        self.assertEqual(len(self.busy([], [activity]).intervals), 1)
+
+    def test_reject_unknown_group_hall(self):
+        activity = Activity(START, START + timedelta(hours=1), frozenset())
+        with self.assertRaises(ValueError):
+            self.busy([], [activity])
+
+    def test_reject_inconsistent_rental_column(self):
+        with self.assertRaises(ValueError):
+            self.busy([record(staff_id=101, hall_code="small")])
+
     def test_reject_rental_unmapped(self):
         with self.assertRaises(ValueError):
             self.busy([record(staff_id=999, hall_code="unknown")])
