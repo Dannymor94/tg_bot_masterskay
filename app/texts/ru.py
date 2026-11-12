@@ -1,0 +1,5 @@
+MISSING_VARIABLE = "нет переменной {name}"
+INVALID_SETTINGS = "Некорректные настройки: {fields}"
+INVALID_STUDIO = "Некорректный studio.yaml"
+HEALTH_OK = "Heartbeat актуален"
+HEALTH_FAILED = "Heartbeat отсутствует или устарел"
