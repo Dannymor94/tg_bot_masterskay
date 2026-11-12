@@ -252,3 +252,44 @@ def test_retry_after_counts_from_response_time(path):
             await engine.dispose()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("register_after_restart", [False, True])
+def test_unknown_blocked_recipient_survives_restart(path, register_after_restart):
+    async def scenario():
+        engine = create_db(path)
+        calls = []
+
+        async def send(row):
+            calls.append(row["dedupe_key"])
+            raise TelegramForbiddenError(method=METHOD, message="synthetic")
+
+        try:
+            await put(engine)
+            async with engine.connect() as connection:
+                assert not (await connection.execute(select(users))).all()
+            assert await send_one(engine, send, CFG, NOW)
+            assert (await rows(engine))[0]["state"] == "blocked"
+            await engine.dispose()
+            engine = create_db(path)
+            # Blocking must survive independently of outbox history and users.
+            async with engine.begin() as connection:
+                await connection.execute(outbox.delete())
+                if register_after_restart:
+                    await connection.execute(
+                        users.insert().values(telegram_user_id=1, role="client", created_at=NOW)
+                    )
+            assert await put(engine, draft("after-restart"))
+            stored = (await rows(engine))[0]
+            assert stored["state"] == "blocked" and stored["attempts"] == 0
+            assert not await send_one(engine, send, CFG, NOW + timedelta(seconds=1))
+            # Sender must also protect messages inserted without enqueue's policy.
+            async with engine.begin() as connection:
+                await connection.execute(outbox.insert().values(**draft("bypass").model_dump()))
+            assert await send_one(engine, send, CFG, NOW + timedelta(seconds=2))
+            assert all(row["state"] == "blocked" for row in await rows(engine))
+            assert calls == ["one"]
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())

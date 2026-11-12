@@ -21,8 +21,9 @@ from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.db.models import kv, outbox, users
+from app.db.models import kv, outbox
 from app.domain.delivery import delivery_time, retry_time
+from app.services.telegram_recipients import is_blocked, mark_blocked
 from app.settings import StudioConfig
 
 Send = Callable[[Mapping[str, Any]], Awaitable[None]]
@@ -81,13 +82,9 @@ async def send_one(
                 await connection.rollback()
                 return False
             user_id = row["telegram_user_id"]
-            blocked = (
-                await connection.execute(
-                    select(users.c.blocked_at).where(users.c.telegram_user_id == user_id)
-                )
-            ).scalar_one_or_none()
+            blocked = await is_blocked(connection, user_id)
             state, attempts, due = "sent", row["attempts"], row["next_attempt_at"]
-            if blocked is not None:
+            if blocked:
                 state = "blocked"
             else:
                 attempts += 1
@@ -111,11 +108,7 @@ async def send_one(
                     )
                 except TelegramForbiddenError:
                     state = "blocked"
-                    await connection.execute(
-                        users.update()
-                        .where(users.c.telegram_user_id == user_id)
-                        .values(blocked_at=now)
-                    )
+                    await mark_blocked(connection, user_id, now)
                     await connection.execute(
                         outbox.update()
                         .where(

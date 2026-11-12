@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from app.db.models import outbox, users
 from app.domain.delivery import delivery_time
 from app.domain.models import OutboxDraft
+from app.services.telegram_recipients import is_blocked
 from app.settings import StudioConfig
 
 
@@ -46,7 +47,7 @@ async def enqueue(
         .first()
     )
     state = "pending"
-    if recipient is not None and recipient["blocked_at"] is not None:
+    if await is_blocked(connection, draft.telegram_user_id):
         state = "blocked"
     elif (
         recipient is not None
