@@ -1,10 +1,18 @@
-"""Only T-201 actions. Business scenarios declare their own permissions later."""
+"""Default-deny permissions declared by T-201 and client onboarding T-301."""
 
 from app.domain.models import RecordSnapshot, User
 
 TASK_ACTIONS = ("tasks.list", "tasks.create", "tasks.take", "tasks.done", "tasks.reply")
 
-ACTIONS = ("menu", "invite.admin", "invite.teacher", "invite.redeem", "access.revoke")
+ACTIONS = (
+    "menu",
+    "invite.admin",
+    "invite.teacher",
+    "invite.redeem",
+    "access.revoke",
+    "client.onboard",
+    "client.retry",
+)
 
 
 def can(user: User, action: str, target: RecordSnapshot | User | None = None) -> bool:
@@ -15,6 +23,10 @@ def can(user: User, action: str, target: RecordSnapshot | User | None = None) ->
     own = isinstance(target, User) and target.telegram_user_id == user.telegram_user_id
     if action in TASK_ACTIONS:
         return target is None and user.role == "admin"
+    if action == "client.onboard":
+        return own and user.role == "client" and not user.is_owner
+    if action == "client.retry":
+        return user.role == "admin" and isinstance(target, User) and target.role == "client"
     if action == "invite.redeem":
         return own and user.role in ("client", "teacher") and not user.is_owner
     if action == "menu":
