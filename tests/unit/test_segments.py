@@ -99,9 +99,7 @@ def test_unsubscribing_is_immediate():
 def test_broadcast_dedupe_is_stable_and_per_recipient():
     assert broadcast_key(17, 99) == "17:99"
     assert broadcast_key(17, 99) == broadcast_key(17, 99)
-    assert len(
-        {broadcast_key(17, 99), broadcast_key(18, 99), broadcast_key(17, 100)}
-    ) == 3
+    assert len({broadcast_key(17, 99), broadcast_key(18, 99), broadcast_key(17, 100)}) == 3
 
 
 @pytest.mark.parametrize(

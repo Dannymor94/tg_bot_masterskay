@@ -7,9 +7,7 @@ from collections.abc import Sequence
 
 from app.domain.models import User
 
-SEGMENT_NAMES = frozenset(
-    {"clients_all", "teachers_all", "teachers_renters", "everyone"}
-)
+SEGMENT_NAMES = frozenset({"clients_all", "teachers_all", "teachers_renters", "everyone"})
 
 
 def segment(users: Sequence[User], name: str) -> list[int]:
