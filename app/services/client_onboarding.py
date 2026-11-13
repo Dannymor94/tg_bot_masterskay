@@ -274,7 +274,7 @@ class ClientService(AccessService):
                 raise AccessDenied()
             await self.authorize(db, target.telegram_user_id, "client.onboard", target)
             if (
-                task["state"] == "done"
+                task["state"] != "open"
                 or target.consent_at is None
                 or not await self.fresh(db, actor_id, f"retry:{request}")
             ):

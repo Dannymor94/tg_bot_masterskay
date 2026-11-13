@@ -87,8 +87,10 @@ def test_source_create_reply_and_phone_lifetime(task_db, code):
                 assert not await service.finish(2, task_id, NOW, reply="retry")
             else:
                 async with engine.connect() as db:
-                    assert (await db.execute(select(tasks.c.body))).scalar_one() == ""
-                await service.finish(2, task_id, NOW)
+                    row = (await db.execute(select(tasks))).mappings().one()
+                    assert row["body"] == "synthetic private input" and row["state"] == "open"
+                assert not await service.take(2, task_id, NOW)
+                assert not await service.finish(2, task_id, NOW)
             async with service.transaction(NOW) as db:
                 assert await create_task(db, draft, service.cfg, NOW) == task_id
             async with engine.connect() as db:
@@ -128,6 +130,14 @@ def test_all_rule_state_transitions(task_db, code):
             async with service.transaction(NOW) as db:
                 task_id = await create_task(db, draft, service.cfg, NOW)
             assert not await service.finish(1, task_id, NOW)
+            if code == "R4":
+                assert not await service.take(1, task_id, NOW)
+                assert not await service.take(2, task_id, NOW)
+                assert not await service.finish(1, task_id, NOW)
+                async with engine.connect() as db:
+                    row = (await db.execute(select(tasks))).mappings().one()
+                    assert row["state"] == "open" and row["body"] == "synthetic"
+                return
             assert await service.take(1, task_id, NOW)
             assert not await service.take(2, task_id, NOW)
             assert await service.finish(1, task_id, NOW)

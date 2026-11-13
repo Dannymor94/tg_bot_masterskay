@@ -19,7 +19,10 @@ from aiogram.exceptions import (
     TelegramServerError,
 )
 from aiogram.types import (
-    InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
@@ -60,6 +63,12 @@ class TelegramSender:
             if row.get("kind") == "task.card":
                 buttons = []
                 task_id = payload["task_id"]
+                if payload.get("retry"):
+                    buttons.append(
+                        InlineKeyboardButton(
+                            text=ru.CLIENT_RETRY, callback_data=f"cl:retry:{task_id}"
+                        )
+                    )
                 if payload["take"]:
                     buttons.append(
                         InlineKeyboardButton(

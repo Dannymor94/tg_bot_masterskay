@@ -172,7 +172,10 @@ R5 uses the configured score threshold; R6 uses top_windows_in_report ranking.
 Future source adapters provide text/candidate identifiers without YCLIENTS names
 or phones. These functions do not define external API fields. R4 body may hold
 the temporary own-contact input; ownership verification and binding retry belong
-to T-301. R4 body is cleared on Take/Done, never copied into outbox or audit.
+to T-301. Unresolved R4 stays open: generic Take/Done return False. Take
+queues a current card explaining Retry linking. Only verified binding closes R4
+and clears its body atomically; the phone never enters outbox or audit (Issue #14,
+ADR-06/09, owner-approved integration flow).
 
 `create_task(db, draft, cfg, now)` is a trusted internal source boundary, called
 inside `BEGIN IMMEDIATE` together with the source event. It is not exposed to
@@ -186,7 +189,7 @@ survives its allowed lifetime. R4 body conflicts are checked only while open.
 Public `TaskService` operations reload the actor within the write transaction:
 `manual` (`tasks.create`), `queue` (`tasks.list`), `take` (`tasks.take`), `finish`
 (`tasks.done` / `tasks.reply`), `reply_prompt` (`tasks.reply`). Only current
-admin/owner users are allowed. Take requires `open`; Done/Reply require `taken`
+admin/owner users are allowed. For non-R4 tasks, Take requires `open`; Done/Reply require `taken`
 and the assignee or owner. Reply is R3-only, with one outbox response and task
 completion in the same transaction. Repeated transitions produce no effects.
 
@@ -204,7 +207,7 @@ marker per Moscow minute. Retention runs once per Moscow date. Completed task
 content/references and outbox reply copies are cleared after done_ttl_days;
 undelivered expired effects are cancelled. Completed tasks are excluded from the
 queue. Maintenance is wired into run_jobs. R1/R2/R5/R6 sources will be wired in
-T-402/T-303/T-403, R3 in T-304, and R4/binding retry in T-301. No YCLIENTS calls
+T-402/T-303/T-403, R3 in T-304. R4/binding retry is connected to T-301. No YCLIENTS calls
 are introduced here.
 ## Клиентская привязка T-301 / граница с T-203
 
@@ -224,23 +227,29 @@ message ID последнего /start; смена этапа делает пр�
 `client.onboard` разрешает только действия клиента над собой, `client.retry` —
 только admin/owner над клиентом; свежие права адресата проверяются при повторе.
 
-R4 использует существующую таблицу tasks и поля TaskDraft: code=R4,
-requester_id=Telegram ID клиента, ref=строка этого ID,
-dedupe_key=client:r4:<Telegram ID>, title из ru.py. Только body содержит
-нормализованный номер из собственного request_contact. Статусы open/taken —
-неразрешённая R4. `ClientTasks` — локальная граница интеграции; импорта ветки
-T-203 нет. Создание R4, изменения users/kv и уведомления атомарны. Уведомление
-admin содержит только ID задачи и callback cl:retry:<task_id>.
+R4 создаётся через общий `rule("R4", "client:<Telegram ID>", ...)` и
+`create_task(db, draft, cfg, now)`: requester_id=Telegram ID клиента,
+ref=строка ID, dedupe_key=task_key("R4", "client:<Telegram ID>"), title из ru.py.
+Создание задачи, kv identity (без телефона), last_ping_at, изменения onboarding
+и уведомления `task.card` происходят в одной транзакции. Уведомления хранят
+только task_id; текст и права перечитываются при отправке. Это тот же путь,
+что и остальные задачи T-203, включая напоминания и TTL tombstones.
 
-**Требование к интеграции T-203:** никогда не копировать body R4 в outbox,
-аудит или логи. Любое закрытие R4 должно очистить body в той же транзакции.
-Кнопку «Повторить привязку» направлять в `ClientService.retry`, а не выдавать
-YCLIENTS ID вручную. При успехе retry стирает body всех R4 данного клиента,
-закрывает их и сохраняет ID одной транзакцией. Ошибка оставляет номер только в
-открытой задаче. Пока источник недоступен, администратор может повторять поиск,
-но успешная live-привязка заблокирована. Автоматическое переоткрытие закрытой
-без привязки R4 не входит в протокол; T-203 не должен закрывать такую задачу
-обычным «Готово» без решения этого сценария.
+Телефон хранится только в body **открытой** R4 (ADR-06). R4 не переходит в taken:
+«Взять» отклоняется с карточкой, направляющей к «Повторить привязку»; обычное
+«Готово» тоже отклоняется. Карточка открытой R4 вместо Take/Done показывает
+`cl:retry:<task_id>`, если свежие права администратора и клиента позволяют retry.
+Закрытая R4 не показывает телефон или retry. Команды и старые кнопки не обходят
+проверки сервиса. Это предусмотренный Issue #14 поток, ADR не изменены.
+
+`ClientService.retry` принимает только open R4, перечитывает права обоих
+пользователей и согласие клиента в BEGIN IMMEDIATE. При успехе сохраняет
+проверенный ID, стирает body всех R4 клиента, закрывает задачи и уведомляет
+клиента одной транзакцией. Ошибка сохраняет open R4 для следующего retry.
+Конкурентные retry проверяют состояние после получения блокировки: только
+одна успешная привязка и одно уведомление. Нельзя закрыть R4 без привязки или
+вручную выдать YCLIENTS ID. Пока источник недоступен до T-103, live-привязка
+остаётся отключённой; тесты используют исключительно синтетический lookup.
 
 Outbox payload_min.reply_markup — JSON-строка Telegram-клавиатуры (сохраняется
 скалярный контракт OutboxDraft). Sender валидирует клавиатуру при отправке;

@@ -141,6 +141,14 @@ class TaskService(AccessService):
     async def take(self, actor_id: int, task_id: int, now: datetime) -> bool:
         async with self.transaction(now) as db:
             await self.authorize(db, actor_id, "tasks.take")
+            current = (
+                (await db.execute(select(tasks).where(tasks.c.id == task_id))).mappings().first()
+            )
+            if current is not None and current["code"] == "R4":
+                if current["state"] == "open":
+                    # Old buttons/commands must point back to the viable Retry flow.
+                    await card(db, task_id, actor_id, "retry-required", self.cfg, now)
+                return False
             row = (
                 await db.execute(
                     tasks.update()
@@ -151,9 +159,6 @@ class TaskService(AccessService):
             ).first()
             if row is None:
                 return False
-            # R4 may retain a phone only in the open state.
-            if row.code == "R4":
-                await db.execute(tasks.update().where(tasks.c.id == task_id).values(body=""))
             await self.audit(db, actor_id, "tasks.taken", str(task_id), now)
             await card(db, task_id, actor_id, "taken", self.cfg, now)
             return True
@@ -166,7 +171,7 @@ class TaskService(AccessService):
                 db, actor_id, "tasks.reply" if reply is not None else "tasks.done"
             )
             row = (await db.execute(select(tasks).where(tasks.c.id == task_id))).mappings().first()
-            if row is None:
+            if row is None or row["code"] == "R4":
                 return False
             if row["taken_by"] != actor_id and not actor.is_owner:
                 raise AccessDenied()

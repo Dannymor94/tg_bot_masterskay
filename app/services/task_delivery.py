@@ -34,6 +34,24 @@ async def render_card(
     )
     if task is None or not task["title"]:
         return None
+    retry = False
+    if task["code"] == "R4" and task["state"] == "open":
+        target_row = (
+            (
+                await db.execute(
+                    select(users).where(users.c.telegram_user_id == task["requester_id"])
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if target_row is not None:
+            target = User.model_validate({key: target_row[key] for key in User.model_fields})
+            retry = (
+                can(actor, "client.retry", target)
+                and can(target, "client.onboard", target)
+                and target.consent_at is not None
+            )
     due = task["due_at"]
     payload = {
         "text": ru.TASK_CARD.format(
@@ -41,15 +59,19 @@ async def render_card(
             code=task["code"],
             state=task["state"],
             title=task["title"],
-            body=task["body"],
+            body=task["body"] if task["code"] != "R4" or task["state"] == "open" else "",
             due=due.astimezone(ZoneInfo(cfg.studio.timezone)).isoformat()
             if due
             else ru.TASK_NO_DUE,
         ),
         "task_id": task["id"],
-        "take": task["state"] == "open",
-        "finish": task["state"] == "taken"
+        "take": task["state"] == "open" and task["code"] != "R4",
+        "retry": retry,
+        "finish": task["code"] != "R4"
+        and task["state"] == "taken"
         and (task["taken_by"] == actor.telegram_user_id or actor.is_owner),
         "reply": task["code"] == "R3",
     }
+    if task["code"] == "R4" and task["state"] == "open":
+        payload["text"] += "\n" + ru.TASK_R4_HELP
     return {**row, "payload_min": payload}

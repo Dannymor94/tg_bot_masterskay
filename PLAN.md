@@ -159,6 +159,20 @@
 - [ ] **T-304 · AGENT · T-203, T-301** «Вопрос администратору» → R3 → ответ пользователю. **Готово:** сервисный тест полного круга.
 - [ ] **T-305 · AGENT · T-301, T-105 · [R]** Рассылки: анонс по сегменту и служебная участникам занятия, предпросмотр, «Отписаться», итог автору. **Читать:** ADR-18. **Готово:** анонс не уходит неподписанным; повторное «Отправить» не дублирует.
 
+### Интеграция Issue #14 — T-203 + T-301
+
+- [x] **T-203-301a · AGENT · T-102b, T-203, T-301** Перенос принятых реализаций
+  e6e7aaed / 8d799b2a на origin/main 436fd69c после merge PR #16; объединить
+  router/RBAC/outbox/texts/contracts без потери возможностей и тестов.
+- [x] **T-203-301b · AGENT · T-203-301a** Общий create_task и уведомления R4;
+  открытая R4 → администратор Retry → verified binding, done и удаление номера.
+  Take/Done для R4 запрещены с направлением в Retry (Issue #14, ADR-06/09/13).
+- [x] **T-203-301c · AGENT · T-203-301b** Сквозные регрессии lifecycle, keyboards,
+  permissions, callbacks, races, rollback; полный make check на Python 3.12.
+- [ ] **T-203-301d · REVIEWER · T-203-301c · [R]** Независимый чистый checkout
+  финального SHA: uv sync --frozen && make check; diff review и вердикт в новом
+  draft integration PR. Отчёт: docs/reviews/Issue-14-integration.md.
+
 ### Этап 4 — Преподаватели и пустые окна
 
 - [ ] **T-401 · AGENT · T-201, T-104 · [R]** Приглашение, `teacher_kind`, «Мои занятия / аренды», уведомления, напоминание об аренде. **Читать:** ADR-10, ADR-15. **Готово:** преподаватель не видит чужие занятия и телефоны.
@@ -172,12 +186,8 @@ R7 «давно не был» и сегменты по активности · R
 
 ## 8. Следующее действие
 
-**T-203** implemented for Issue #8, independent [R] **APPROVE**, draft PR **#12**.
-Report: `docs/reviews/T-203.md`; independent verdict: `docs/reviews/T-203-independent.md`.
-Owner review/merge is the next action. T-204 also requires T-202. No subsequent
-task was started in this session. **T-001** remains HUMAN work.
-**T-201** объединена в main (PR #7, 046136b). **T-301** реализована по Issue #9,
-независимое [R] — APPROVE в PR #11 (код 4730edf, 628 тестов). Live YCLIENTS заблокирован до
-подтверждённых fixtures T-103. После принятия T-301 задачи T-302 и T-305
-требуют своих зависимостей; T-304 дополнительно требует T-203.
-Следующие задачи в этой сессии не начинать. **T-001** остаётся задачей человека.
+T-102b объединена в main через PR #16 (436fd69c). Индивидуально принятые
+T-203 / PR #12 и T-301 / PR #11 перенесены в одну integration branch по Issue #14.
+Следующий шаг — независимый [R] на финальном SHA нового draft PR, затем решение
+владельца о merge. Не объединять/закрывать PR #11/#12 до принятия интеграции.
+Live YCLIENTS отключён до T-103; T-001 остаётся задачей человека.
