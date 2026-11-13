@@ -29,6 +29,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.db.models import kv, outbox
+from app.services.broadcast_delivery import finish_broadcast, render_news
 from app.domain.delivery import delivery_time, retry_time
 from app.services.invites import InviteTokens
 from app.services.task_delivery import render_card
@@ -52,58 +53,54 @@ class TelegramSender:
             token = self.tokens.derive(payload["nonce"]).get_secret_value()
             username = (await self.bot.me()).username
             payload = {"text": ru.INVITE_LINK.format(username=username, token=token)}
+        markup = None
+        if row.get("kind") == "task.card":
+            buttons = []
+            task_id = payload["task_id"]
+            if payload.get("retry"):
+                buttons.append(
+                    InlineKeyboardButton(
+                        text=ru.CLIENT_RETRY, callback_data=f"cl:retry:{task_id}"
+                    )
+                )
+            if payload["take"]:
+                buttons.append(
+                    InlineKeyboardButton(text=ru.TASK_TAKE, callback_data=f"task:take:{task_id}")
+                )
+            if payload["finish"]:
+                buttons.append(
+                    InlineKeyboardButton(text=ru.TASK_DONE, callback_data=f"task:done:{task_id}")
+                )
+                if payload["reply"]:
+                    buttons.append(
+                        InlineKeyboardButton(
+                            text=ru.TASK_REPLY, callback_data=f"task:reply:{task_id}"
+                        )
+                    )
+            if buttons:
+                markup = InlineKeyboardMarkup(inline_keyboard=[buttons])
+        elif "reply_markup" in payload:
+            raw_markup = json.loads(payload["reply_markup"])
+            if "inline_keyboard" in raw_markup:
+                markup = InlineKeyboardMarkup.model_validate(raw_markup)
+            elif "keyboard" in raw_markup:
+                markup = ReplyKeyboardMarkup.model_validate(raw_markup)
+            else:
+                markup = ReplyKeyboardRemove.model_validate(raw_markup)
         if "photo_file_id" in payload:
+            extra = {"reply_markup": markup} if markup is not None else {}
             await self.bot.send_photo(
                 chat_id=row["telegram_user_id"],
                 photo=payload["photo_file_id"],
                 caption=payload.get("text"),
+                **extra,
+            )
+        elif markup is not None:
+            await self.bot.send_message(
+                chat_id=row["telegram_user_id"], text=payload["text"], reply_markup=markup
             )
         else:
-            markup = None
-            if row.get("kind") == "task.card":
-                buttons = []
-                task_id = payload["task_id"]
-                if payload.get("retry"):
-                    buttons.append(
-                        InlineKeyboardButton(
-                            text=ru.CLIENT_RETRY, callback_data=f"cl:retry:{task_id}"
-                        )
-                    )
-                if payload["take"]:
-                    buttons.append(
-                        InlineKeyboardButton(
-                            text=ru.TASK_TAKE, callback_data=f"task:take:{task_id}"
-                        )
-                    )
-                if payload["finish"]:
-                    buttons.append(
-                        InlineKeyboardButton(
-                            text=ru.TASK_DONE, callback_data=f"task:done:{task_id}"
-                        )
-                    )
-                    if payload["reply"]:
-                        buttons.append(
-                            InlineKeyboardButton(
-                                text=ru.TASK_REPLY, callback_data=f"task:reply:{task_id}"
-                            )
-                        )
-                if buttons:
-                    markup = InlineKeyboardMarkup(inline_keyboard=[buttons])
-            elif "reply_markup" in payload:
-                raw_markup = json.loads(payload["reply_markup"])
-                if "inline_keyboard" in raw_markup:
-                    markup = InlineKeyboardMarkup.model_validate(raw_markup)
-                elif "keyboard" in raw_markup:
-                    markup = ReplyKeyboardMarkup.model_validate(raw_markup)
-                else:
-                    markup = ReplyKeyboardRemove.model_validate(raw_markup)
-            if markup is not None:
-                await self.bot.send_message(
-                    chat_id=row["telegram_user_id"], text=payload["text"], reply_markup=markup
-                )
-            else:
-                await self.bot.send_message(chat_id=row["telegram_user_id"], text=payload["text"])
-
+            await self.bot.send_message(chat_id=row["telegram_user_id"], text=payload["text"])
 
 async def send_one(
     engine: AsyncEngine,
@@ -144,14 +141,17 @@ async def send_one(
             blocked = await is_blocked(connection, user_id)
             state, attempts, due = "sent", row["attempts"], row["next_attempt_at"]
             rendered = dict(row)
+            skip_state = "cancelled"
             if row["kind"] == "task.card" and not blocked:
                 rendered = await render_card(
                     connection, {str(key): value for key, value in row.items()}, cfg
                 )
+            elif row["kind"] == "broadcast.news" and not blocked:
+                rendered, skip_state = await render_news(connection, row)
             if blocked:
                 state = "blocked"
             elif rendered is None:
-                state = "cancelled"
+                state = skip_state
             else:
                 attempts += 1
                 try:
@@ -193,6 +193,10 @@ async def send_one(
                 .where(outbox.c.id == row["id"])
                 .values(state=state, attempts=attempts, next_attempt_at=due)
             )
+            if row["kind"] == "broadcast.news" and state != "pending":
+                identifier = row["payload_min"].get("broadcast_id")
+                if type(identifier) is int and identifier > 0:
+                    await finish_broadcast(connection, identifier, cfg, now)
             # Persist a global rate limit across process restarts, including successful sends.
             if state != "pending":
                 due = now + timedelta(seconds=1 / cfg.broadcasts.messages_per_second)

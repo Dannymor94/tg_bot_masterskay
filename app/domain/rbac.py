@@ -12,6 +12,8 @@ ACTIONS = (
     "access.revoke",
     "client.onboard",
     "client.retry",
+    "broadcast.create",
+    "broadcast.manage",
 )
 
 
@@ -27,6 +29,8 @@ def can(user: User, action: str, target: RecordSnapshot | User | None = None) ->
         return own and user.role == "client" and not user.is_owner
     if action == "client.retry":
         return user.role == "admin" and isinstance(target, User) and target.role == "client"
+    if action in ("broadcast.create", "broadcast.manage"):
+        return target is None and user.role == "admin"
     if action == "invite.redeem":
         return own and user.role in ("client", "teacher") and not user.is_owner
     if action == "menu":
