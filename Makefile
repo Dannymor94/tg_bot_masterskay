@@ -1,4 +1,4 @@
-.PHONY: setup check test run migrate health
+.PHONY: setup check test run migrate health spike-plan
 setup:
 	uv sync --frozen
 check:
@@ -14,3 +14,6 @@ migrate:
 	uv run --frozen alembic upgrade head
 health:
 	uv run --frozen python -m app.health
+
+spike-plan:
+	uv run --frozen python -m scripts.spike_preflight
