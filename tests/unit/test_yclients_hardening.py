@@ -9,7 +9,13 @@ from pydantic import BaseModel, ConfigDict, SecretStr
 
 from app.integrations.yclients import DecodedPage, YclientsClient
 from app.integrations.yclients_guards import SAFE_READ_ROUTES, safe_read_route
-from app.integrations.yclients_policy import AdapterError, ApiMatrix, OperationDenied, load_matrix, redact
+from app.integrations.yclients_policy import (
+    AdapterError,
+    ApiMatrix,
+    OperationDenied,
+    load_matrix,
+    redact,
+)
 from app.settings import load_studio
 
 HOST = "https://yclients.invalid"
