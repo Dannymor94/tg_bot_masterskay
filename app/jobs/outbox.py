@@ -5,6 +5,7 @@ has no idempotency key. No automatic mechanism can provide exactly-once there.
 """
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timedelta
 from typing import Any
@@ -17,6 +18,7 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
     TelegramServerError,
 )
+from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -51,7 +53,22 @@ class TelegramSender:
                 caption=payload.get("text"),
             )
         else:
-            await self.bot.send_message(chat_id=row["telegram_user_id"], text=payload["text"])
+            if "reply_markup" not in payload:
+                await self.bot.send_message(chat_id=row["telegram_user_id"], text=payload["text"])
+                return
+            markup = payload.get("reply_markup")
+            reply_markup = None
+            if markup is not None:
+                markup = json.loads(markup)
+                if "inline_keyboard" in markup:
+                    reply_markup = InlineKeyboardMarkup.model_validate(markup)
+                elif "keyboard" in markup:
+                    reply_markup = ReplyKeyboardMarkup.model_validate(markup)
+                else:
+                    reply_markup = ReplyKeyboardRemove.model_validate(markup)
+            await self.bot.send_message(
+                chat_id=row["telegram_user_id"], text=payload["text"], reply_markup=reply_markup
+            )
 
 
 async def send_one(
