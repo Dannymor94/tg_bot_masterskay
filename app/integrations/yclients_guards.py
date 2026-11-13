@@ -26,7 +26,8 @@ SAFE_READ_ROUTES: Mapping[str, frozenset[str]] = {
     ),
     "records.list": frozenset(
         {
-            "GET /api/v1/records/{company_id}?start_date={from}&end_date={to}&page={page}&count={count}"
+            "GET /api/v1/records/{company_id}?"
+            "start_date={from}&end_date={to}&page={page}&count={count}"
         }
     ),
     "record.get": frozenset({"GET /api/v1/record/{company_id}/{record_id}"}),
