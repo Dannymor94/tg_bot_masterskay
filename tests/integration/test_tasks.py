@@ -7,19 +7,11 @@ from sqlalchemy import select
 from app.db.engine import create_db
 from app.db.models import audit_log, outbox, tasks, users
 from app.domain.tasks import rule
-from app.runtime import migrate
 from app.services.access import AccessDenied
 from app.services.tasks import TaskService, create_task
 from app.settings import load_studio
 
 NOW = datetime(2026, 1, 1, 9, tzinfo=UTC)
-
-
-@pytest.fixture
-def task_db(tmp_path):
-    path = tmp_path / "tasks.db"
-    migrate(path)
-    return path
 
 
 async def seed(service):
@@ -106,6 +98,41 @@ def test_source_create_reply_and_phone_lifetime(task_db, code):
                 assert len(replies) == int(code == "R3")
                 if replies:
                     assert replies[0]["telegram_user_id"] == 3
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("code", ["R1", "R2", "R3", "R4", "R5", "R6", "R8"])
+def test_all_rule_state_transitions(task_db, code):
+    from datetime import timedelta
+
+    async def scenario():
+        engine = create_db(task_db)
+        service = TaskService(engine, 1, load_studio())
+        try:
+            await seed(service)
+            draft = rule(
+                code,
+                "state-matrix",
+                service.cfg,
+                NOW,
+                body="synthetic",
+                requester_id=3,
+                starts_at=NOW + timedelta(days=1),
+                score=1,
+                rank=1,
+            )
+            assert draft is not None
+            async with service.transaction(NOW) as db:
+                task_id = await create_task(db, draft, service.cfg, NOW)
+            assert not await service.finish(1, task_id, NOW)
+            assert await service.take(1, task_id, NOW)
+            assert not await service.take(2, task_id, NOW)
+            assert await service.finish(1, task_id, NOW)
+            assert not await service.take(1, task_id, NOW)
+            assert not await service.finish(1, task_id, NOW)
         finally:
             await engine.dispose()
 
