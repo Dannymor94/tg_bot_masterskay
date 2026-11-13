@@ -87,12 +87,11 @@ def test_draft_preview_authorization_and_deduplication(tmp_path):
                 await service.create(3, "forged", "clients_all", "Bad", NOW)
             with pytest.raises(ValueError):
                 await service.create(1, "bad", "unknown", "Bad", NOW)
-            broadcast_id = await service.create(
-                2, "msg10", "clients_all", "Synthetic text", NOW
+            broadcast_id = await service.create(2, "msg10", "clients_all", "Synthetic text", NOW)
+            assert (
+                await service.create(2, "msg10", "clients_all", "Synthetic text", NOW)
+                == broadcast_id
             )
-            assert await service.create(
-                2, "msg10", "clients_all", "Synthetic text", NOW
-            ) == broadcast_id
             with pytest.raises(ValueError):
                 await service.create(2, "msg10", "clients_all", "changed", NOW)
             events = await all_rows(engine, outbox)
@@ -108,9 +107,7 @@ def test_draft_preview_authorization_and_deduplication(tmp_path):
             assert not await service.cancel(2, broadcast_id, NOW)
             sent = [r for r in await all_rows(engine, outbox) if r["kind"] == "broadcast.news"]
             assert {r["telegram_user_id"] for r in sent} == {3, 4}
-            assert {r["dedupe_key"] for r in sent} == {
-                f"{broadcast_id}:3", f"{broadcast_id}:4"
-            }
+            assert {r["dedupe_key"] for r in sent} == {f"{broadcast_id}:3", f"{broadcast_id}:4"}
             assert all(r["payload_min"] == {"broadcast_id": broadcast_id} for r in sent)
             assert "Synthetic text" not in repr(sent)
             audits = await all_rows(engine, audit_log)
@@ -144,9 +141,7 @@ def test_cancel_and_empty_audience_summary(tmp_path):
             assert len(reports) == 1
             assert "доставлено 0" in reports[0]["payload_min"]["text"]
             items = await all_rows(engine, broadcasts)
-            assert {r["id"]: r["state"] for r in items} == {
-                id1: "cancelled", id2: "done"
-            }
+            assert {r["id"]: r["state"] for r in items} == {id1: "cancelled", id2: "done"}
         finally:
             await engine.dispose()
 
@@ -183,8 +178,7 @@ def test_unsubscribe_is_own_only_and_cancels_unsent_news(tmp_path):
             for t in range(12):
                 await send_one(engine, send, service.cfg, NOW + timedelta(seconds=t * 2))
             assert not any(
-                call.args[0]["telegram_user_id"] == 3
-                and call.args[0]["kind"] == "broadcast.news"
+                call.args[0]["telegram_user_id"] == 3 and call.args[0]["kind"] == "broadcast.news"
                 for call in send.await_args_list
             )
             items = await all_rows(engine, broadcasts)
@@ -235,8 +229,7 @@ def test_send_time_rechecks_late_optout_and_revocation(tmp_path):
             for t in range(12):
                 await send_one(engine, sends, service.cfg, NOW + timedelta(seconds=t * 2))
             assert not any(
-                call.args[0]["kind"] == "broadcast.news"
-                for call in sends.await_args_list
+                call.args[0]["kind"] == "broadcast.news" for call in sends.await_args_list
             )
             row = (await all_rows(engine, broadcasts))[0]
             assert row["state"] == "done"
@@ -262,9 +255,9 @@ def test_photo_sender_attaches_unsubscribe_keyboard(monkeypatch):
                         "photo_file_id": "synthetic-file-id",
                         "reply_markup": json.dumps(
                             {
-                                "inline_keyboard": [[{
-                                    "text": "Отписаться", "callback_data": "bc:off:10"
-                                }]]
+                                "inline_keyboard": [
+                                    [{"text": "Отписаться", "callback_data": "bc:off:10"}]
+                                ]
                             }
                         ),
                     },
@@ -296,20 +289,26 @@ def test_photo_preview_and_transactional_enqueue_rollback(tmp_path, monkeypatch)
             monkeypatch.setattr(module, "enqueue", fail)
             with pytest.raises(RuntimeError):
                 await service.create(
-                    1, "photo-1", "clients_all", "Synthetic", NOW,
+                    1,
+                    "photo-1",
+                    "clients_all",
+                    "Synthetic",
+                    NOW,
                     photo_file_id="synthetic-photo-id",
                 )
             assert await all_rows(engine, broadcasts) == []
             assert await all_rows(engine, outbox) == []
             monkeypatch.setattr(module, "enqueue", original)
             identifier = await service.create(
-                1, "photo-1", "clients_all", "Synthetic", NOW,
+                1,
+                "photo-1",
+                "clients_all",
+                "Synthetic",
+                NOW,
                 photo_file_id="synthetic-photo-id",
             )
             items = await all_rows(engine, outbox)
-            assert [r["kind"] for r in items] == [
-                "broadcast.preview.photo", "broadcast.preview"
-            ]
+            assert [r["kind"] for r in items] == ["broadcast.preview.photo", "broadcast.preview"]
             assert items[0]["payload_min"]["photo_file_id"] == "synthetic-photo-id"
             assert items[1]["payload_min"]["text"].startswith(f"Рассылка №{identifier}")
         finally:
@@ -339,9 +338,7 @@ def test_two_pending_broadcasts_reconciled_after_telegram_block(tmp_path):
                     )
 
             for n in range(16):
-                await send_one(
-                    engine, transport, service.cfg, NOW + timedelta(seconds=n * 2)
-                )
+                await send_one(engine, transport, service.cfg, NOW + timedelta(seconds=n * 2))
             items = {r["id"]: r for r in await all_rows(engine, broadcasts)}
             assert items[first]["state"] == "done"
             assert items[second]["state"] == "done"
@@ -392,9 +389,7 @@ def test_broadcast_transport_identity_and_callback_scope(caplog):
             ]:
                 await dispatcher.feed_update(bot, update)
             service.create.assert_not_called()
-            await dispatcher.feed_update(
-                bot, make_update(2, "/announce clients_all Synthetic")
-            )
+            await dispatcher.feed_update(bot, make_update(2, "/announce clients_all Synthetic"))
             service.create.assert_awaited_once_with(
                 2, "10", "clients_all", "Synthetic", NOW, photo_file_id=None
             )

@@ -59,9 +59,7 @@ class TelegramSender:
             task_id = payload["task_id"]
             if payload.get("retry"):
                 buttons.append(
-                    InlineKeyboardButton(
-                        text=ru.CLIENT_RETRY, callback_data=f"cl:retry:{task_id}"
-                    )
+                    InlineKeyboardButton(text=ru.CLIENT_RETRY, callback_data=f"cl:retry:{task_id}")
                 )
             if payload["take"]:
                 buttons.append(
@@ -180,14 +178,18 @@ async def send_one(
                     # A Telegram block also terminates other queued broadcasts
                     # to this user. They need their outcome counters reconciled.
                     pending_news = (
-                        await connection.execute(
-                            select(outbox.c.payload_min).where(
-                                outbox.c.telegram_user_id == user_id,
-                                outbox.c.kind == "broadcast.news",
-                                outbox.c.state.in_(["pending", "summary"]),
+                        (
+                            await connection.execute(
+                                select(outbox.c.payload_min).where(
+                                    outbox.c.telegram_user_id == user_id,
+                                    outbox.c.kind == "broadcast.news",
+                                    outbox.c.state.in_(["pending", "summary"]),
+                                )
                             )
                         )
-                    ).scalars().all()
+                        .scalars()
+                        .all()
+                    )
                     for item in pending_news:
                         ref = item.get("broadcast_id")
                         if type(ref) is int and ref > 0:

@@ -203,9 +203,7 @@ class BroadcastService(AccessService):
             if actor.news_opt_in:
                 return False
             await db.execute(
-                users.update()
-                .where(users.c.telegram_user_id == actor_id)
-                .values(news_opt_in=True)
+                users.update().where(users.c.telegram_user_id == actor_id).values(news_opt_in=True)
             )
             await enqueue(
                 db,
@@ -254,14 +252,14 @@ class BroadcastService(AccessService):
                 await self.audit(db, actor_id, "broadcast.unsubscribed", str(actor_id), now)
             # No pending announcement can survive opt-out; batch state change is atomic.
             pending = (
-                (await db.execute(
+                await db.execute(
                     select(outbox.c.id, outbox.c.payload_min).where(
                         outbox.c.telegram_user_id == actor_id,
                         outbox.c.kind == "broadcast.news",
                         outbox.c.state == "pending",
                     )
-                )).all()
-            )
+                )
+            ).all()
             affected: set[int] = set()
             for outbox_id, payload in pending:
                 identifier = payload.get("broadcast_id")

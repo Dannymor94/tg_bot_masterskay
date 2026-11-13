@@ -23,10 +23,5 @@ jobs:
           version: "0.12.5"
           enable-cache: false
       - run: uv sync --frozen
-      - name: Exact formatting patch (no writes)
-        run: |
-          uv run --frozen ruff format --diff app/jobs/outbox.py app/services/broadcast_delivery.py app/services/broadcasts.py tests/integration/test_broadcasts.py || true
-      - name: Ruff lint and Pyright check
-        run: |
-          uv run --frozen ruff check . || true
-          uv run --frozen pyright || true
+      - name: Full locked project check
+        run: make check

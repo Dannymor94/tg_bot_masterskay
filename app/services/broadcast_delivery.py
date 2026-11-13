@@ -31,11 +31,7 @@ async def render_news(
     if item is None or item["state"] != "sending" or item["kind"] != "announcement":
         return None, "cancelled"
     person = (
-        (
-            await db.execute(
-                select(users).where(users.c.telegram_user_id == row["telegram_user_id"])
-            )
-        )
+        (await db.execute(select(users).where(users.c.telegram_user_id == row["telegram_user_id"])))
         .mappings()
         .first()
     )
@@ -107,9 +103,7 @@ async def finish_broadcast(
     )
     if counts.get("pending", 0) or counts.get("summary", 0):
         return False
-    await db.execute(
-        broadcasts.update().where(broadcasts.c.id == identifier).values(state="done")
-    )
+    await db.execute(broadcasts.update().where(broadcasts.c.id == identifier).values(state="done"))
     await enqueue(
         db,
         OutboxDraft(
