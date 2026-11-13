@@ -183,7 +183,7 @@ class BroadcastService(AccessService):
             )
             if item is None or item["created_by"] != actor_id:
                 raise AccessDenied()
-            if item["state"] != "draft":
+            if item["state"] != "draft" or item["kind"] != "announcement":
                 return False
             await db.execute(
                 broadcasts.update().where(broadcasts.c.id == broadcast_id).values(state="cancelled")

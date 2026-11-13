@@ -42,13 +42,16 @@ async def render_news(
     if person is None:
         return None, "cancelled"
     actor = User.model_validate({name: person[name] for name in User.model_fields})
+    if not actor.news_opt_in:
+        return None, "unsubscribed"
     try:
         eligible = actor.telegram_user_id in segment([actor], item["segment"])
     except ValueError:
         # A manually corrupted/retired segment must never crash the sender.
         return None, "cancelled"
     if not eligible:
-        return None, "unsubscribed"
+        # Role/segment changes are suppressed, but are not an explicit opt-out.
+        return None, "cancelled"
     markup = {
         "inline_keyboard": [
             [
