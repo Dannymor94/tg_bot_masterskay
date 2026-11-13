@@ -162,3 +162,96 @@ UNIQUE outbox `dedupe_key` (Telegram ID, message ID, действие); повт
 Погашение всегда проверяет текущие права создателя. Sender/enqueue проверяют
 также `access_revoked`; ранее поставленные pending/summary отменяются при
 отзыве. Уже принятая Telegram отправка необратима; гарантии T-105 сохранены.
+
+## T-203 task queue
+
+`app.domain.tasks.rule(code, source_key, cfg, now, ...)` produces internal
+`TaskDraft` values for R1–R6/R8. `source_key` identifies the originating action
+or event; `now` is its stable timestamp on replay. R2 requires aware `starts_at`;
+R5 uses the configured score threshold; R6 uses top_windows_in_report ranking.
+Future source adapters provide text/candidate identifiers without YCLIENTS names
+or phones. These functions do not define external API fields. R4 body may hold
+the temporary own-contact input; ownership verification and binding retry belong
+to T-301. Unresolved R4 stays open: generic Take/Done return False. Take
+queues a current card explaining Retry linking. Only verified binding closes R4
+and clears its body atomically; the phone never enters outbox or audit (Issue #14,
+ADR-06/09, owner-approved integration flow).
+
+`create_task(db, draft, cfg, now)` is a trusted internal source boundary, called
+inside `BEGIN IMMEDIATE` together with the source event. It is not exposed to
+Telegram. Replaying an open task with different content raises an error. Replays
+never restore redacted R4 or completed/expired content. Task rows and UNIQUE
+keys remain as TTL tombstones; audit records are retained. A SHA-256 draft
+identity in kv preserves content-conflict detection after TTL. due_at is
+normalized to UTC before hashing; R4 body is excluded so no phone-derived hash
+survives its allowed lifetime. R4 body conflicts are checked only while open.
+
+Public `TaskService` operations reload the actor within the write transaction:
+`manual` (`tasks.create`), `queue` (`tasks.list`), `take` (`tasks.take`), `finish`
+(`tasks.done` / `tasks.reply`), `reply_prompt` (`tasks.reply`). Only current
+admin/owner users are allowed. For non-R4 tasks, Take requires `open`; Done/Reply require `taken`
+and the assignee or owner. Reply is R3-only, with one outbox response and task
+completion in the same transaction. Repeated transitions produce no effects.
+
+`/tasks`, `/task текст`, `/take ID`, `/done ID`, `/reply ID текст`, and inline
+buttons obtain the actor exclusively from Telegram from_user in the matching
+private chat. «Ответить» enqueues `/reply` instructions; the service handles the
+actual response. The transport neither sends Telegram messages directly nor
+logs rejected input.
+
+Outbox cards retain only task_id; the sender reads current content, state and
+recipient permissions within its transaction. Stale buttons are checked again
+by the service. Reminders use open_hour/close_hour, quiet hours, and
+overdue_ping_minutes; last_ping_at/outbox changes are atomic, with one scheduler
+marker per Moscow minute. Retention runs once per Moscow date. Completed task
+content/references and outbox reply copies are cleared after done_ttl_days;
+undelivered expired effects are cancelled. Completed tasks are excluded from the
+queue. Maintenance is wired into run_jobs. R1/R2/R5/R6 sources will be wired in
+T-402/T-303/T-403, R3 in T-304. R4/binding retry is connected to T-301. No YCLIENTS calls
+are introduced here.
+## Клиентская привязка T-301 / граница с T-203
+
+`Candidate(client_id: positive int, phone: SecretStr)` — внутренний DTO поиска
+клиента, не схема ответа YCLIENTS. `ClientLookup.candidates(SecretStr)` возвращает
+кандидатов только из доверенного адаптера; сейчас runtime использует
+`UnavailableClientLookup`. Подключать внешний адаптер можно после T-103.
+Ноль/несколько совпадений, ошибка или timeout оставляют пользователя без ID и
+создают R4. Телефон не попадает в логи, kv, users, аудит или outbox.
+Привязка преподавателей (staff/renter) остаётся T-401 и не повышает роль client.
+
+`ClientService.start/choice/contact/retry` сериализованы `BEGIN IMMEDIATE`;
+состояние и обработанные request ID хранятся в kv без телефона. Epoch кнопок —
+message ID последнего /start; смена этапа делает прежние кнопки недействительными.
+Принятый выбор новости нельзя изменить повторной кнопкой. source — первая
+корректная метка src_… при создании пользователя, без последующей перезаписи.
+`client.onboard` разрешает только действия клиента над собой, `client.retry` —
+только admin/owner над клиентом; свежие права адресата проверяются при повторе.
+
+R4 создаётся через общий `rule("R4", "client:<Telegram ID>", ...)` и
+`create_task(db, draft, cfg, now)`: requester_id=Telegram ID клиента,
+ref=строка ID, dedupe_key=task_key("R4", "client:<Telegram ID>"), title из ru.py.
+Создание задачи, kv identity (без телефона), last_ping_at, изменения onboarding
+и уведомления `task.card` происходят в одной транзакции. Уведомления хранят
+только task_id; текст и права перечитываются при отправке. Это тот же путь,
+что и остальные задачи T-203, включая напоминания и TTL tombstones.
+
+Телефон хранится только в body **открытой** R4 (ADR-06). R4 не переходит в taken:
+«Взять» отклоняется с карточкой, направляющей к «Повторить привязку»; обычное
+«Готово» тоже отклоняется. Карточка открытой R4 вместо Take/Done показывает
+`cl:retry:<task_id>`, если свежие права администратора и клиента позволяют retry.
+Закрытая R4 не показывает телефон или retry. Команды и старые кнопки не обходят
+проверки сервиса. Это предусмотренный Issue #14 поток, ADR не изменены.
+
+`ClientService.retry` принимает только open R4, перечитывает права обоих
+пользователей и согласие клиента в BEGIN IMMEDIATE. При успехе сохраняет
+проверенный ID, стирает body всех R4 клиента, закрывает задачи и уведомляет
+клиента одной транзакцией. Ошибка сохраняет open R4 для следующего retry.
+Конкурентные retry проверяют состояние после получения блокировки: только
+одна успешная привязка и одно уведомление. Нельзя закрыть R4 без привязки или
+вручную выдать YCLIENTS ID. Пока источник недоступен до T-103, live-привязка
+остаётся отключённой; тесты используют исключительно синтетический lookup.
+
+Outbox payload_min.reply_markup — JSON-строка Telegram-клавиатуры (сохраняется
+скалярный контракт OutboxDraft). Sender валидирует клавиатуру при отправке;
+request_contact и inline-кнопки отправляются только через outbox. Тихие часы
+и границы гарантии доставки T-105 сохраняются.

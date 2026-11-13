@@ -1,0 +1,55 @@
+uv run --frozen ruff format --check .
+92 files already formatted
+uv run --frozen ruff check .
+All checks passed!
+uv run --frozen pyright
+0 errors, 0 warnings, 0 informations
+uv run --frozen pytest
+============================= test session starts ==============================
+platform darwin -- Python 3.12.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/danny/Documents/tg_bot_masterskay/v2/tg_bot_masterskay-dev/tg-bot-issue14-integration
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0, respx-0.23.1
+collected 816 items
+
+tests/integration/test_access.py ..                                      [  0%]
+tests/integration/test_client_bot.py ....                                [  0%]
+tests/integration/test_client_onboarding.py .......                      [  1%]
+tests/integration/test_client_security.py ......                         [  2%]
+tests/integration/test_client_task_integration.py ......                 [  3%]
+tests/integration/test_database.py .......                               [  3%]
+tests/integration/test_delivery.py ...............                       [  5%]
+tests/integration/test_enqueue.py ..                                     [  6%]
+tests/integration/test_invites.py ........                               [  6%]
+tests/integration/test_rbac_bot.py ....                                  [  7%]
+tests/integration/test_rbac_migration.py .                               [  7%]
+tests/integration/test_rbac_security.py ...........                      [  8%]
+tests/integration/test_runtime.py .....                                  [  9%]
+tests/integration/test_scheduler.py .......                              [ 10%]
+tests/integration/test_task_bot.py ..                                    [ 10%]
+tests/integration/test_task_jobs.py ...                                  [ 11%]
+tests/integration/test_task_security.py ................................ [ 14%]
+....                                                                     [ 15%]
+tests/integration/test_tasks.py ..........                               [ 16%]
+tests/unit/test_client_matching.py ..........                            [ 17%]
+tests/unit/test_contracts.py ........                                    [ 18%]
+tests/unit/test_delivery_policy.py ............                          [ 20%]
+tests/unit/test_domain_imports.py .                                      [ 20%]
+tests/unit/test_rbac.py ................................................ [ 26%]
+........................................................................ [ 35%]
+........................................................................ [ 43%]
+........................................................................ [ 52%]
+........................................................................ [ 61%]
+........................................................................ [ 70%]
+........................................................................ [ 79%]
+.....................                                                    [ 81%]
+tests/unit/test_settings.py .................                            [ 83%]
+tests/unit/test_task_rules.py .......................................... [ 89%]
+.......                                                                  [ 89%]
+tests/unit/test_yclients_hardening.py ............                       [ 91%]
+tests/unit/test_yclients_http.py ....................................... [ 96%]
+................                                                         [ 98%]
+tests/unit/test_yclients_policy.py ...............                       [100%]
+
+============================= 816 passed in 11.44s =============================

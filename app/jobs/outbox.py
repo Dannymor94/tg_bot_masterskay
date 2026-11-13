@@ -5,6 +5,7 @@ has no idempotency key. No automatic mechanism can provide exactly-once there.
 """
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timedelta
 from typing import Any
@@ -17,6 +18,12 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
     TelegramServerError,
 )
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -24,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.db.models import kv, outbox
 from app.domain.delivery import delivery_time, retry_time
 from app.services.invites import InviteTokens
+from app.services.task_delivery import render_card
 from app.services.telegram_recipients import is_blocked, mark_blocked
 from app.settings import StudioConfig
 from app.texts import ru
@@ -51,7 +59,50 @@ class TelegramSender:
                 caption=payload.get("text"),
             )
         else:
-            await self.bot.send_message(chat_id=row["telegram_user_id"], text=payload["text"])
+            markup = None
+            if row.get("kind") == "task.card":
+                buttons = []
+                task_id = payload["task_id"]
+                if payload.get("retry"):
+                    buttons.append(
+                        InlineKeyboardButton(
+                            text=ru.CLIENT_RETRY, callback_data=f"cl:retry:{task_id}"
+                        )
+                    )
+                if payload["take"]:
+                    buttons.append(
+                        InlineKeyboardButton(
+                            text=ru.TASK_TAKE, callback_data=f"task:take:{task_id}"
+                        )
+                    )
+                if payload["finish"]:
+                    buttons.append(
+                        InlineKeyboardButton(
+                            text=ru.TASK_DONE, callback_data=f"task:done:{task_id}"
+                        )
+                    )
+                    if payload["reply"]:
+                        buttons.append(
+                            InlineKeyboardButton(
+                                text=ru.TASK_REPLY, callback_data=f"task:reply:{task_id}"
+                            )
+                        )
+                if buttons:
+                    markup = InlineKeyboardMarkup(inline_keyboard=[buttons])
+            elif "reply_markup" in payload:
+                raw_markup = json.loads(payload["reply_markup"])
+                if "inline_keyboard" in raw_markup:
+                    markup = InlineKeyboardMarkup.model_validate(raw_markup)
+                elif "keyboard" in raw_markup:
+                    markup = ReplyKeyboardMarkup.model_validate(raw_markup)
+                else:
+                    markup = ReplyKeyboardRemove.model_validate(raw_markup)
+            if markup is not None:
+                await self.bot.send_message(
+                    chat_id=row["telegram_user_id"], text=payload["text"], reply_markup=markup
+                )
+            else:
+                await self.bot.send_message(chat_id=row["telegram_user_id"], text=payload["text"])
 
 
 async def send_one(
@@ -92,14 +143,21 @@ async def send_one(
             user_id = row["telegram_user_id"]
             blocked = await is_blocked(connection, user_id)
             state, attempts, due = "sent", row["attempts"], row["next_attempt_at"]
+            rendered = dict(row)
+            if row["kind"] == "task.card" and not blocked:
+                rendered = await render_card(
+                    connection, {str(key): value for key, value in row.items()}, cfg
+                )
             if blocked:
                 state = "blocked"
+            elif rendered is None:
+                state = "cancelled"
             else:
                 attempts += 1
                 try:
                     try:
                         async with asyncio.timeout(cfg.delivery.request_timeout_seconds):
-                            await send({str(key): value for key, value in row.items()})
+                            await send({str(key): value for key, value in rendered.items()})
                     finally:
                         if clock is not None:
                             now = clock()
