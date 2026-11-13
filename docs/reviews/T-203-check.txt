@@ -1,0 +1,44 @@
+uv run --frozen ruff format --check .
+72 files already formatted
+uv run --frozen ruff check .
+All checks passed!
+uv run --frozen pyright
+0 errors, 0 warnings, 0 informations
+uv run --frozen pytest
+============================= test session starts ==============================
+platform darwin -- Python 3.12.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: /Users/danny/Documents/tg_bot_masterskay/v2/tg_bot_masterskay-dev/tg-bot-t203
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0, respx-0.23.1
+collected 561 items
+
+tests/integration/test_access.py ..                                      [  0%]
+tests/integration/test_database.py .......                               [  1%]
+tests/integration/test_delivery.py ...............                       [  4%]
+tests/integration/test_enqueue.py ..                                     [  4%]
+tests/integration/test_invites.py ........                               [  6%]
+tests/integration/test_rbac_bot.py ....                                  [  6%]
+tests/integration/test_rbac_migration.py .                               [  6%]
+tests/integration/test_rbac_security.py ...........                      [  8%]
+tests/integration/test_runtime.py .....                                  [  9%]
+tests/integration/test_scheduler.py .......                              [ 11%]
+tests/integration/test_task_bot.py ..                                    [ 11%]
+tests/integration/test_task_jobs.py ...                                  [ 11%]
+tests/integration/test_task_security.py ................................ [ 17%]
+....                                                                     [ 18%]
+tests/integration/test_tasks.py ..........                               [ 20%]
+tests/unit/test_contracts.py ........                                    [ 21%]
+tests/unit/test_delivery_policy.py ............                          [ 23%]
+tests/unit/test_domain_imports.py .                                      [ 23%]
+tests/unit/test_rbac.py ................................................ [ 32%]
+........................................................................ [ 45%]
+........................................................................ [ 58%]
+........................................................................ [ 70%]
+........................................................................ [ 83%]
+.........................                                                [ 88%]
+tests/unit/test_settings.py .................                            [ 91%]
+tests/unit/test_task_rules.py .......................................... [ 98%]
+.......                                                                  [100%]
+
+============================= 561 passed in 8.74s ==============================
