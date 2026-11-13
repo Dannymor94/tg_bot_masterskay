@@ -101,6 +101,21 @@ class BroadcastService(AccessService):
                     ]
                 ]
             }
+            if photo_file_id is not None:
+                # A second preview item makes the actual attachment visible
+                # without overflowing Telegram's 1024-character photo caption.
+                await enqueue(
+                    db,
+                    OutboxDraft(
+                        telegram_user_id=actor_id,
+                        kind="broadcast.preview.photo",
+                        payload_min={"text": text, "photo_file_id": photo_file_id},
+                        next_attempt_at=now,
+                        dedupe_key=f"broadcast:preview:photo:{broadcast_id}",
+                    ),
+                    self.cfg,
+                    now,
+                )
             await enqueue(
                 db,
                 OutboxDraft(
@@ -120,13 +135,13 @@ class BroadcastService(AccessService):
         if broadcast_id <= 0:
             raise ValueError("invalid broadcast id")
         async with self.transaction(now) as db:
-            actor = await self.authorize(db, actor_id, "broadcast.manage")
+            await self.authorize(db, actor_id, "broadcast.manage")
             item = (
                 (await db.execute(select(broadcasts).where(broadcasts.c.id == broadcast_id)))
                 .mappings()
                 .first()
             )
-            if item is None or (item["created_by"] != actor_id and not actor.is_owner):
+            if item is None or item["created_by"] != actor_id:
                 raise AccessDenied()
             if item["state"] in ("sending", "done"):
                 return 0
@@ -160,13 +175,13 @@ class BroadcastService(AccessService):
         if broadcast_id <= 0:
             raise ValueError("invalid broadcast id")
         async with self.transaction(now) as db:
-            actor = await self.authorize(db, actor_id, "broadcast.manage")
+            await self.authorize(db, actor_id, "broadcast.manage")
             item = (
                 (await db.execute(select(broadcasts).where(broadcasts.c.id == broadcast_id)))
                 .mappings()
                 .first()
             )
-            if item is None or (item["created_by"] != actor_id and not actor.is_owner):
+            if item is None or item["created_by"] != actor_id:
                 raise AccessDenied()
             if item["state"] != "draft":
                 return False

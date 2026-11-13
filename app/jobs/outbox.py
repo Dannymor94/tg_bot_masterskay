@@ -140,6 +140,7 @@ async def send_one(
             user_id = row["telegram_user_id"]
             blocked = await is_blocked(connection, user_id)
             state, attempts, due = "sent", row["attempts"], row["next_attempt_at"]
+            affected_broadcasts: set[int] = set()
             rendered = dict(row)
             skip_state = "cancelled"
             if row["kind"] == "task.card" and not blocked:
@@ -174,6 +175,21 @@ async def send_one(
                     )
                 except TelegramForbiddenError:
                     state = "blocked"
+                    # A Telegram block also terminates other queued broadcasts
+                    # to this user. They need their outcome counters reconciled.
+                    pending_news = (
+                        await connection.execute(
+                            select(outbox.c.payload_min).where(
+                                outbox.c.telegram_user_id == user_id,
+                                outbox.c.kind == "broadcast.news",
+                                outbox.c.state.in_(["pending", "summary"]),
+                            )
+                        )
+                    ).scalars().all()
+                    for item in pending_news:
+                        ref = item.get("broadcast_id")
+                        if type(ref) is int and ref > 0:
+                            affected_broadcasts.add(ref)
                     await mark_blocked(connection, user_id, now)
                     await connection.execute(
                         outbox.update()
@@ -196,7 +212,9 @@ async def send_one(
             if row["kind"] == "broadcast.news" and state != "pending":
                 identifier = row["payload_min"].get("broadcast_id")
                 if type(identifier) is int and identifier > 0:
-                    await finish_broadcast(connection, identifier, cfg, now)
+                    affected_broadcasts.add(identifier)
+            for identifier in sorted(affected_broadcasts):
+                await finish_broadcast(connection, identifier, cfg, now)
             # Persist a global rate limit across process restarts, including successful sends.
             if state != "pending":
                 due = now + timedelta(seconds=1 / cfg.broadcasts.messages_per_second)

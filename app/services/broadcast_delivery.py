@@ -42,7 +42,12 @@ async def render_news(
     if person is None:
         return None, "cancelled"
     actor = User.model_validate({name: person[name] for name in User.model_fields})
-    if actor.telegram_user_id not in segment([actor], item["segment"]):
+    try:
+        eligible = actor.telegram_user_id in segment([actor], item["segment"])
+    except ValueError:
+        # A manually corrupted/retired segment must never crash the sender.
+        return None, "cancelled"
+    if not eligible:
         return None, "unsubscribed"
     markup = {
         "inline_keyboard": [
