@@ -12,37 +12,80 @@ from pydantic import JsonValue
 
 SAFE_READ_ROUTES: Mapping[str, frozenset[str]] = {
     "company.get": frozenset({"GET /api/v1/company/{company_id}"}),
-    "staff.list": frozenset({
-        "GET /api/v1/company/{company_id}/staff/",
-        "GET /api/v1/staff/{company_id}",
-    }),
-    "services.list": frozenset({
-        "GET /api/v1/company/{company_id}/services/",
-        "GET /api/v1/services/{company_id}",
-    }),
-    "records.list": frozenset({
-        "GET /api/v1/records/{company_id}?start_date={from}&end_date={to}&page={page}&count={count}"
-    }),
+    "staff.list": frozenset(
+        {
+            "GET /api/v1/company/{company_id}/staff/",
+            "GET /api/v1/staff/{company_id}",
+        }
+    ),
+    "services.list": frozenset(
+        {
+            "GET /api/v1/company/{company_id}/services/",
+            "GET /api/v1/services/{company_id}",
+        }
+    ),
+    "records.list": frozenset(
+        {
+            "GET /api/v1/records/{company_id}?start_date={from}&end_date={to}&page={page}&count={count}"
+        }
+    ),
     "record.get": frozenset({"GET /api/v1/record/{company_id}/{record_id}"}),
-    "activities.search": frozenset({
-        "GET /api/v1/activity/{company_id}/search?from={from}&till={to}"
-    }),
-    "clients.search_by_phone": frozenset({
-        "POST /api/v1/company/{company_id}/clients/search",
-        "GET /api/v1/clients/{company_id}?phone={phone}",
-    }),
+    "activities.search": frozenset(
+        {"GET /api/v1/activity/{company_id}/search?from={from}&till={to}"}
+    ),
+    "clients.search_by_phone": frozenset(
+        {
+            "POST /api/v1/company/{company_id}/clients/search",
+            "GET /api/v1/clients/{company_id}?phone={phone}",
+        }
+    ),
 }
 
 # Safe diagnostic KEY labels, not a confirmed external API schema.
 # All unknown keys are dropped: PII may occur in dictionary keys as well.
-SAFE_DIAGNOSTIC_KEYS = frozenset({
-    "id", "record_id", "client_id", "staff_id", "service_id", "activity_id",
-    "resource_id", "company_id", "hall_code", "owner_id", "telegram_user_id",
-    "name", "phone", "token", "extra", "nested", "missing", "success", "count",
-    "starts_at", "ends_at", "date", "time", "price", "prices", "total",
-    "page", "pages", "has_more", "data", "items", "results", "payload",
-    "status", "deleted", "updated_at", "created_at", "value", "type",
-})
+SAFE_DIAGNOSTIC_KEYS = frozenset(
+    {
+        "id",
+        "record_id",
+        "client_id",
+        "staff_id",
+        "service_id",
+        "activity_id",
+        "resource_id",
+        "company_id",
+        "hall_code",
+        "owner_id",
+        "telegram_user_id",
+        "name",
+        "phone",
+        "token",
+        "extra",
+        "nested",
+        "missing",
+        "success",
+        "count",
+        "starts_at",
+        "ends_at",
+        "date",
+        "time",
+        "price",
+        "prices",
+        "total",
+        "page",
+        "pages",
+        "has_more",
+        "data",
+        "items",
+        "results",
+        "payload",
+        "status",
+        "deleted",
+        "updated_at",
+        "created_at",
+        "value",
+        "type",
+    }
+)
 
 
 def safe_read_route(operation_id: str, template: str) -> bool:

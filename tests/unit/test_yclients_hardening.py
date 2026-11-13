@@ -59,9 +59,7 @@ def test_code_allowlist_covers_declared_candidates_without_implicitly_verifying_
     for operation in matrix.operations:
         assert operation.status == "pending"
         assert set(operation.candidates) == set(SAFE_READ_ROUTES[operation.id])
-    assert not safe_read_route(
-        "company.get", "POST /api/v1/records/{company_id}/delete"
-    )
+    assert not safe_read_route("company.get", "POST /api/v1/records/{company_id}/delete")
 
 
 @pytest.mark.parametrize(
@@ -72,9 +70,7 @@ def test_code_allowlist_covers_declared_candidates_without_implicitly_verifying_
         "GET /api/v1/staff/{company_id}",
     ],
 )
-def test_forged_verified_route_denied_before_network(
-    forged_route, respx_mock, client_factory
-):
+def test_forged_verified_route_denied_before_network(forged_route, respx_mock, client_factory):
     matrix = load_matrix().model_dump(mode="json")
     matrix["operations"][0].update(status="verified", path=forged_route)
 
@@ -89,9 +85,7 @@ def test_forged_verified_route_denied_before_network(
 
 def test_spike_cannot_run_new_unapproved_candidate(respx_mock, client_factory):
     matrix = load_matrix().model_dump(mode="json")
-    matrix["operations"][0]["candidates"].append(
-        "POST /api/v1/records/{company_id}/delete"
-    )
+    matrix["operations"][0]["candidates"].append("POST /api/v1/records/{company_id}/delete")
 
     async def scenario():
         async with client_factory(
@@ -104,9 +98,7 @@ def test_spike_cannot_run_new_unapproved_candidate(respx_mock, client_factory):
     assert not respx_mock.calls
 
 
-def test_verified_route_remains_allowed_after_spike_removes_candidates(
-    respx_mock, client_factory
-):
+def test_verified_route_remains_allowed_after_spike_removes_candidates(respx_mock, client_factory):
     route = respx_mock.get(HOST + "/api/v1/company/7").respond(json={"id": 7})
     matrix = load_matrix().model_dump(mode="json")
     matrix["operations"][0].update(
@@ -142,9 +134,7 @@ def test_redact_discards_pii_in_dynamic_json_keys_and_does_not_mutate():
     assert redact(result) == result
 
 
-def test_trusted_dto_boundary_keeps_dates_and_counts_in_memory(
-    respx_mock, client_factory
-):
+def test_trusted_dto_boundary_keeps_dates_and_counts_in_memory(respx_mock, client_factory):
     payload = {
         "record_id": 1,
         "starts_at": "2026-11-13T10:00:00+03:00",
@@ -161,9 +151,7 @@ def test_trusted_dto_boundary_keeps_dates_and_counts_in_memory(
         async with client_factory() as client:
             diagnostic = await client.request("company.get")
             assert isinstance(diagnostic, dict)
-            normalized = await client.request_normalized(
-                "company.get", normalize=normalize
-            )
+            normalized = await client.request_normalized("company.get", normalize=normalize)
             assert diagnostic["record_id"] == 1
             assert diagnostic["starts_at"] == "[REDACTED]"
             assert diagnostic["count"] == "[REDACTED]"
@@ -176,12 +164,8 @@ def test_trusted_dto_boundary_keeps_dates_and_counts_in_memory(
     assert route.call_count == 2
 
 
-def test_normalizer_errors_and_untyped_result_do_not_leak_private_json(
-    respx_mock, client_factory
-):
-    route = respx_mock.get(HOST + "/api/v1/company/7").respond(
-        json={"phone": "private-PII"}
-    )
+def test_normalizer_errors_and_untyped_result_do_not_leak_private_json(respx_mock, client_factory):
+    route = respx_mock.get(HOST + "/api/v1/company/7").respond(json={"phone": "private-PII"})
 
     async def scenario():
         async with client_factory() as client:
@@ -191,7 +175,8 @@ def test_normalizer_errors_and_untyped_result_do_not_leak_private_json(
             ):
                 with pytest.raises(AdapterError) as error:
                     await client.request_normalized(
-                        "company.get", normalize=normalize  # type: ignore[arg-type]
+                        "company.get",
+                        normalize=normalize,  # type: ignore[arg-type]
                     )
                 assert "private-PII" not in str(error.value)
 
@@ -201,24 +186,34 @@ def test_normalizer_errors_and_untyped_result_do_not_leak_private_json(
 
 def test_normalized_pagination_emits_validated_dtos(respx_mock, client_factory):
     side_effect = [
-        httpx.Response(200, json={
-            "items": [{
-                "record_id": 1,
-                "starts_at": "2026-11-13T10:00:00+03:00",
-                "count": 9,
-                "phone": "private-one",
-            }],
-            "has_more": True,
-        }),
-        httpx.Response(200, json={
-            "items": [{
-                "record_id": 2,
-                "starts_at": "2026-11-13T11:00:00+03:00",
-                "count": 7,
-                "phone": "private-two",
-            }],
-            "has_more": False,
-        }),
+        httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "record_id": 1,
+                        "starts_at": "2026-11-13T10:00:00+03:00",
+                        "count": 9,
+                        "phone": "private-one",
+                    }
+                ],
+                "has_more": True,
+            },
+        ),
+        httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "record_id": 2,
+                        "starts_at": "2026-11-13T11:00:00+03:00",
+                        "count": 7,
+                        "phone": "private-two",
+                    }
+                ],
+                "has_more": False,
+            },
+        ),
     ]
     route = respx_mock.get(RECORDS).mock(side_effect=side_effect)
 
@@ -242,10 +237,12 @@ def test_normalized_pagination_emits_validated_dtos(respx_mock, client_factory):
 
 def test_repeated_page_fails_even_if_terminal_flag_changes(respx_mock, client_factory):
     repeated = [{"record_id": 1, "phone": "private-phone"}]
-    route = respx_mock.get(RECORDS).mock(side_effect=[
-        httpx.Response(200, json={"items": repeated, "has_more": True}),
-        httpx.Response(200, json={"items": repeated, "has_more": False}),
-    ])
+    route = respx_mock.get(RECORDS).mock(
+        side_effect=[
+            httpx.Response(200, json={"items": repeated, "has_more": True}),
+            httpx.Response(200, json={"items": repeated, "has_more": False}),
+        ]
+    )
 
     async def scenario():
         async with client_factory() as client:
@@ -253,9 +250,7 @@ def test_repeated_page_fails_even_if_terminal_flag_changes(respx_mock, client_fa
                 await client.paginate(
                     "records.list",
                     {"from": "x", "to": "y"},
-                    decode_page=lambda raw: DecodedPage(
-                        raw["items"], raw["has_more"]
-                    ),
+                    decode_page=lambda raw: DecodedPage(raw["items"], raw["has_more"]),
                 )
             assert "private-phone" not in str(error.value)
 
@@ -272,9 +267,7 @@ def test_incomplete_empty_intermediate_page_fails_closed(respx_mock, client_fact
                 await client.paginate(
                     "records.list",
                     {"from": "x", "to": "y"},
-                    decode_page=lambda raw: DecodedPage(
-                        raw["items"], raw["has_more"]
-                    ),
+                    decode_page=lambda raw: DecodedPage(raw["items"], raw["has_more"]),
                 )
 
     asyncio.run(scenario())
