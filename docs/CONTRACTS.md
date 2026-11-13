@@ -47,6 +47,42 @@ T-101 фиксирует только этот контракт и исполь�
 
 Операции, пути, методы и статусы брать **только** из `docs/API_MATRIX.yaml`; `kind: read` не означает обязательно HTTP GET. `pending` недоступен обычному приложению. T-103 сохраняет только обезличенные fixtures и явный статус verified/unavailable. На unavailable применяется записанный fallback; без тихой подмены полей.
 
+## T-102: YCLIENTS read-only adapter and verified normalization
+
+`app/integrations/yclients.py` contains an opt-in read-only HTTP client.
+Every operation must be `kind: read`, have a locally allowed
+operation-ID + METHOD + exact path template in the **code-reviewed**
+`SAFE_READ_ROUTES`, and be marked `verified` in `docs/API_MATRIX.yaml`.
+Unverified operations remain unavailable to normal runtime; the explicit
+owner-only `allow_pending` switch can only try routes already in this
+static allowlist. No writable endpoint is authorized by metadata alone.
+
+`YclientsClient.request()` and `paginate()` return only **diagnostic**
+sanitized values (numeric IDs/bools/null and permitted structural labels;
+all other scalar values are masked; unknown dynamic keys are dropped).
+They must never feed business normalization.
+
+`request_normalized(..., normalize=...)` and
+`paginate_normalized(..., decode_page=..., normalize_item=...)` are
+trusted in-memory DTO boundaries; decoders return `pydantic.BaseModel`
+instances based on **verified T-103 fixtures**. Raw JSON is temporary,
+private and never logged, returned wholesale or stored. Error messages
+never expose the raw response.
+
+Pagination has an explicit decoder to determine `has_more` rather than
+guessing external YCLIENTS fields. Every page is bounded and a repeated
+non-empty page (even with modified completion flag), a progressless
+empty intermediate page, invalid decoder output, retry exhaustion or
+max-pages exhaustion fails the entire request. Identical-page detection
+alone does **not** prove unique IDs, partial overlap or historical
+coverage; T-103/T-104 must enforce those verified invariants before
+synchronization.
+
+Only code-reviewed routes can be promoted to verified; an endpoint
+discovered during T-103 that differs from the static list requires a
+reviewed code + test change first. T-103 may delete remaining candidates
+after it records an approved `path`; the allowlist remains authoritative.
+
 ## Побочные эффекты
 
 `services` не отправляет Telegram напрямую: создаёт запись `outbox` с `dedupe_key` в той же транзакции, что задача/событие. `outbox sender` доставляет, обрабатывает 429/backoff и сохраняет состояние. Подтверждённая доставка не равна выполнению задачи; повторная обработка не создаёт второй outbox record.
