@@ -47,6 +47,10 @@ TARGETS = {
 }
 # Independent explicit allow-list. Everything outside these cells must be denied.
 ALLOWED = {
+    "client.onboard": {(actor, "self") for actor in ("unknown", "client")},
+    "client.retry": {
+        (actor, target) for actor in ("admin", "owner") for target in ("self", "other_client")
+    },
     "menu": {(actor, "self") for actor in ("client", "teacher", "renter", "admin", "owner")},
     "invite.admin": {("owner", "none")},
     "invite.teacher": {("owner", "none"), ("admin", "none")},

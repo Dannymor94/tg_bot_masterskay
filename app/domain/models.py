@@ -70,6 +70,7 @@ class User(DTO):
     teacher_kind: Literal["staff", "renter"] | None = None
     yclients_client_id: int | None = None
     yclients_staff_id: int | None = None
+    consent_at: AwareDatetime | None = None
     news_opt_in: bool = False
     slot_digest_enabled: bool = False
     blocked_at: AwareDatetime | None = None
