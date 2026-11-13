@@ -3,22 +3,31 @@
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
 from aiogram import Bot, Dispatcher
 from aiogram.types import CallbackQuery, Chat, Message, Update, User
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.bot.broadcasts import build_router
 from app.db.engine import create_db
 from app.db.models import audit_log, broadcasts, outbox, users
 from app.jobs.outbox import TelegramSender, send_one
+from app.runtime import migrate
 from app.services.access import AccessDenied
 from app.services.broadcasts import BroadcastService
 from app.settings import load_studio
 
 NOW = datetime(2026, 1, 1, 9, tzinfo=UTC)
+
+
+def prepared_engine(path: Path) -> AsyncEngine:
+    """Apply production migration before starting isolated SQLite tests."""
+    migrate(path)
+    return create_db(path)
 
 
 async def seeded(engine):
@@ -71,7 +80,7 @@ async def all_rows(engine, table):
 
 def test_draft_preview_authorization_and_deduplication(tmp_path):
     async def scenario():
-        engine = create_db(tmp_path / "announcements.db")
+        engine = prepared_engine(tmp_path / "announcements.db")
         try:
             service = await seeded(engine)
             with pytest.raises(AccessDenied):
@@ -115,7 +124,7 @@ def test_draft_preview_authorization_and_deduplication(tmp_path):
 
 def test_cancel_and_empty_audience_summary(tmp_path):
     async def scenario():
-        engine = create_db(tmp_path / "empty.db")
+        engine = prepared_engine(tmp_path / "empty.db")
         try:
             service = await seeded(engine)
             id1 = await service.create(1, "cancel1", "clients_all", "Cancel", NOW)
@@ -146,7 +155,7 @@ def test_cancel_and_empty_audience_summary(tmp_path):
 
 def test_unsubscribe_is_own_only_and_cancels_unsent_news(tmp_path):
     async def scenario():
-        engine = create_db(tmp_path / "optout.db")
+        engine = prepared_engine(tmp_path / "optout.db")
         try:
             service = await seeded(engine)
             identifier = await service.create(1, "news", "clients_all", "Private", NOW)
@@ -191,7 +200,7 @@ def test_unsubscribe_is_own_only_and_cancels_unsent_news(tmp_path):
 
 def test_subscribe_restores_own_explicit_opt_in(tmp_path):
     async def scenario():
-        engine = create_db(tmp_path / "subscribe.db")
+        engine = prepared_engine(tmp_path / "subscribe.db")
         try:
             service = await seeded(engine)
             assert await service.unsubscribe(3, NOW)
@@ -210,7 +219,7 @@ def test_subscribe_restores_own_explicit_opt_in(tmp_path):
 
 def test_send_time_rechecks_late_optout_and_revocation(tmp_path):
     async def scenario():
-        engine = create_db(tmp_path / "race.db")
+        engine = prepared_engine(tmp_path / "race.db")
         try:
             service = await seeded(engine)
             identifier = await service.create(1, "race", "clients_all", "Synthetic", NOW)
@@ -276,7 +285,7 @@ def test_photo_preview_and_transactional_enqueue_rollback(tmp_path, monkeypatch)
     from app.services import broadcasts as module
 
     async def scenario():
-        engine = create_db(tmp_path / "preview-photo.db")
+        engine = prepared_engine(tmp_path / "preview-photo.db")
         try:
             service = await seeded(engine)
             original = module.enqueue
@@ -314,7 +323,7 @@ def test_two_pending_broadcasts_reconciled_after_telegram_block(tmp_path):
     from aiogram.methods import SendMessage
 
     async def scenario():
-        engine = create_db(tmp_path / "telegram-block.db")
+        engine = prepared_engine(tmp_path / "telegram-block.db")
         try:
             service = await seeded(engine)
             first = await service.create(1, "b1", "clients_all", "One", NOW)

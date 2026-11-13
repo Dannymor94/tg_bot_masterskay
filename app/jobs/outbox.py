@@ -29,8 +29,8 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.db.models import kv, outbox
-from app.services.broadcast_delivery import finish_broadcast, render_news
 from app.domain.delivery import delivery_time, retry_time
+from app.services.broadcast_delivery import finish_broadcast, render_news
 from app.services.invites import InviteTokens
 from app.services.task_delivery import render_card
 from app.services.telegram_recipients import is_blocked, mark_blocked
@@ -88,12 +88,11 @@ class TelegramSender:
             else:
                 markup = ReplyKeyboardRemove.model_validate(raw_markup)
         if "photo_file_id" in payload:
-            extra = {"reply_markup": markup} if markup is not None else {}
             await self.bot.send_photo(
                 chat_id=row["telegram_user_id"],
                 photo=payload["photo_file_id"],
                 caption=payload.get("text"),
-                **extra,
+                reply_markup=markup,
             )
         elif markup is not None:
             await self.bot.send_message(
@@ -101,6 +100,7 @@ class TelegramSender:
             )
         else:
             await self.bot.send_message(chat_id=row["telegram_user_id"], text=payload["text"])
+
 
 async def send_one(
     engine: AsyncEngine,
@@ -148,7 +148,9 @@ async def send_one(
                     connection, {str(key): value for key, value in row.items()}, cfg
                 )
             elif row["kind"] == "broadcast.news" and not blocked:
-                rendered, skip_state = await render_news(connection, row)
+                rendered, skip_state = await render_news(
+                    connection, {str(key): value for key, value in row.items()}
+                )
             if blocked:
                 state = "blocked"
             elif rendered is None:

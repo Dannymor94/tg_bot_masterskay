@@ -28,17 +28,17 @@ def build_router(service: BroadcastService, clock: Callable[[], datetime]) -> Ro
     router = Router(name="broadcasts")
 
     @router.message(Command("announce", "unsubscribe", "subscribe"))
-    async def command(message: Message, data: CommandObject) -> None:
+    async def command(message: Message, command: CommandObject) -> None:
         actor = message.from_user
         if actor is None or actor.is_bot or not private(message, actor.id):
             return
         try:
-            if data.command == "unsubscribe" and not data.args:
+            if command.command == "unsubscribe" and not command.args:
                 await service.unsubscribe(actor.id, clock())
-            elif data.command == "subscribe" and not data.args:
+            elif command.command == "subscribe" and not command.args:
                 await service.subscribe(actor.id, str(message.message_id), clock())
-            elif data.command == "announce":
-                segment_name, body = (data.args or "").split(maxsplit=1)
+            elif command.command == "announce":
+                segment_name, body = (command.args or "").split(maxsplit=1)
                 photo = message.photo[-1].file_id if message.photo else None
                 await service.create(
                     actor.id,
