@@ -67,6 +67,10 @@ Diff больше ~400 строк — разбить задачу на `T-XXXa/b
 
 **Команды:** `make setup` (uv sync), `make check` (ruff format --check, ruff check, pyright, pytest), `make test`, `make run`, `make migrate`, `make health`. Только человек: `make spike`, `make invite`.
 
+## Language for agents
+
+All newly created GitHub issues, implementation task briefs, instructions to coding/QA agents, review handoffs, and agent-facing PR descriptions must be written in **English**. Keep the owner's plans, ETAs, status summaries and decisions in **Russian**. Do not translate production Telegram copy (Russian), established code identifiers, file paths, ADR names, or quoted evidence. Agents must not be asked to provide time estimates to the owner; the coordinator owns that reporting.
+
 ## 7. Отчёт
 
 ```text

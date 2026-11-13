@@ -21,6 +21,10 @@
 
 **Границы:** merge, deploy, утверждение ADR и использование реальных секретов, `make spike` и `make invite` остаются за владельцем. Внешний агент-диспетчер ещё не реализован (ADR-23), поэтому GitHub issue сама по себе не запускает локальный Claude Code; владелец запускает агента одним поручением, остальное делает агент. Если выполнение заблокировано средой, агент сообщает точный BLOCKED, а не требует рутинных действий без попытки самостоятельного разрешённого обходного пути.
 
+## Agent task language
+
+Write task issues and agent instructions **in English** (including independent QA assignments and PR handoff). Present overall project plans, approximate schedules, prioritization, risks, and status **to the owner in Russian**, from the coordinator. Existing user-facing bot text remains Russian. Keep task execution autonomous without asking the owner to run terminal commands.
+
 ## Правило интеграции
 
 Не выполнять параллельное редактирование `PLAN.md` и общих контрактных файлов в одном рабочем дереве. Задачи завершаются в собственных ветках: после зелёного `make check` каждый агент сам делает commit и обычный `git push -u origin HEAD` из **своего** task-worktree, сообщает абсолютный путь, ветку, полный SHA и ссылку. До push и создания draft PR не считать задачу переданной на ревью. Затем независимое ревью `[R]` по точному SHA с реальным `make check`; REQUEST_CHANGES исправляет исполнитель с повторным push в тот же PR. Запрещены force push и push в `main`. Разрешение конфликтов и merge — владелец/уполномоченный им интегратор, не диспетчер.
