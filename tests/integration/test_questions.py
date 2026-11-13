@@ -24,49 +24,47 @@ async def seeded(engine):
     question = QuestionService(engine, 1, load_studio())
     await question.bootstrap(NOW)
     async with engine.begin() as db:
-        await db.execute(
-            users.insert(),
-            [
-                {
-                    "telegram_user_id": 2,
-                    "role": "client",
-                    "consent_at": NOW,
-                    "yclients_client_id": 52,
-                    "created_at": NOW,
-                },
-                {
-                    "telegram_user_id": 3,
-                    "role": "teacher",
-                    "teacher_kind": "staff",
-                    "yclients_staff_id": 53,
-                    "created_at": NOW,
-                },
-                {"telegram_user_id": 4, "role": "admin", "created_at": NOW},
-                {"telegram_user_id": 5, "role": "admin", "created_at": NOW},
-                {"telegram_user_id": 6, "role": "client", "created_at": NOW},
-                {
-                    "telegram_user_id": 7,
-                    "role": "teacher",
-                    "teacher_kind": "staff",
-                    "yclients_staff_id": 57,
-                    "access_revoked": True,
-                    "created_at": NOW,
-                },
-                {
-                    "telegram_user_id": 8,
-                    "role": "client",
-                    "yclients_client_id": 58,
-                    "blocked_at": NOW,
-                    "created_at": NOW,
-                },
-                {
-                    "telegram_user_id": 9,
-                    "role": "client",
-                    "yclients_client_id": 59,
-                    "created_at": NOW,
-                },
-            ],
-        )
+        for entry in [
+            {
+                "telegram_user_id": 2,
+                "role": "client",
+                "consent_at": NOW,
+                "yclients_client_id": 52,
+                "created_at": NOW,
+            },
+            {
+                "telegram_user_id": 3,
+                "role": "teacher",
+                "teacher_kind": "staff",
+                "yclients_staff_id": 53,
+                "created_at": NOW,
+            },
+            {"telegram_user_id": 4, "role": "admin", "created_at": NOW},
+            {"telegram_user_id": 5, "role": "admin", "created_at": NOW},
+            {"telegram_user_id": 6, "role": "client", "created_at": NOW},
+            {
+                "telegram_user_id": 7,
+                "role": "teacher",
+                "teacher_kind": "staff",
+                "yclients_staff_id": 57,
+                "access_revoked": True,
+                "created_at": NOW,
+            },
+            {
+                "telegram_user_id": 8,
+                "role": "client",
+                "yclients_client_id": 58,
+                "blocked_at": NOW,
+                "created_at": NOW,
+            },
+            {
+                "telegram_user_id": 9,
+                "role": "client",
+                "yclients_client_id": 59,
+                "created_at": NOW,
+            },
+        ]:
+            await db.execute(users.insert().values(**entry))
     return question, TaskService(engine, 1, load_studio())
 
 
@@ -76,9 +74,8 @@ def test_question_through_admin_reply_and_exactly_once(task_db):
         try:
             service, admin = await seeded(engine)
             task_id = await service.ask(2, "msg-10", "Synthetic private question", NOW)
-            assert await service.ask(
-                2, "msg-10", "Synthetic private question", NOW + timedelta(seconds=25)
-            ) == task_id
+            later = NOW + timedelta(seconds=25)
+            assert await service.ask(2, "msg-10", "Synthetic private question", later) == task_id
             with pytest.raises(ValueError):
                 await service.ask(2, "msg-10", "altered question", NOW)
             async with engine.connect() as db:
@@ -113,9 +110,7 @@ def test_question_through_admin_reply_and_exactly_once(task_db):
             # After text TTL clears the question, a replay cannot silently
             # reinterpret that old Telegram message ID with different text.
             async with engine.begin() as db:
-                await db.execute(
-                    tasks.update().where(tasks.c.id == task_id).values(body="")
-                )
+                await db.execute(tasks.update().where(tasks.c.id == task_id).values(body=""))
             with pytest.raises(ValueError):
                 await service.ask(2, "msg-10", "altered after TTL", NOW)
         finally:
