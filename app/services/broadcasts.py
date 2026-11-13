@@ -191,6 +191,37 @@ class BroadcastService(AccessService):
             await self.audit(db, actor_id, "broadcast.cancelled", str(broadcast_id), now)
             return True
 
+    async def subscribe(self, actor_id: int, request_id: str, now: datetime) -> bool:
+        """Explicit re-subscription for consenting linked users and teachers."""
+        if not request_id or len(request_id) > 100:
+            raise ValueError("invalid subscribe request")
+        async with self.transaction(now) as db:
+            actor = await self.user(db, actor_id)
+            await self.authorize(db, actor_id, "menu", actor)
+            if actor is None or (actor.role == "client" and actor.consent_at is None):
+                raise AccessDenied()
+            if actor.news_opt_in:
+                return False
+            await db.execute(
+                users.update()
+                .where(users.c.telegram_user_id == actor_id)
+                .values(news_opt_in=True)
+            )
+            await enqueue(
+                db,
+                OutboxDraft(
+                    telegram_user_id=actor_id,
+                    kind="broadcast.subscribed",
+                    payload_min={"text": ru.BROADCAST_SUBSCRIBED},
+                    next_attempt_at=now,
+                    dedupe_key=f"broadcast:subscribe:{actor_id}:{request_id}",
+                ),
+                self.cfg,
+                now,
+            )
+            await self.audit(db, actor_id, "broadcast.subscribed", str(actor_id), now)
+            return True
+
     async def unsubscribe(
         self, actor_id: int, now: datetime, *, broadcast_id: int | None = None
     ) -> bool:

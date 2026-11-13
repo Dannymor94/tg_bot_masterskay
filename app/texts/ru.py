@@ -69,6 +69,7 @@ BROADCAST_CONFIRM = "Отправить"
 BROADCAST_CANCEL = "Отменить"
 BROADCAST_UNSUBSCRIBE = "Отписаться"
 BROADCAST_UNSUBSCRIBED = "Вы отписались от новостных рассылок."
+BROADCAST_SUBSCRIBED = "Вы подписались на новости."
 BROADCAST_RESULT = (
     "Рассылка №{id}: доставлено {sent}, не доставлено {failed}, "
     "заблокировано {blocked}, отписались до отправки {unsubscribed}."

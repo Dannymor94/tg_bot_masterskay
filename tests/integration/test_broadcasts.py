@@ -26,7 +26,14 @@ async def seeded(engine):
     await service.bootstrap(NOW)
     rows = [
         {"telegram_user_id": 2, "role": "admin", "created_at": NOW},
-        {"telegram_user_id": 3, "role": "client", "news_opt_in": True, "created_at": NOW},
+        {
+            "telegram_user_id": 3,
+            "role": "client",
+            "consent_at": NOW,
+            "news_opt_in": True,
+            "yclients_client_id": 103,
+            "created_at": NOW,
+        },
         {"telegram_user_id": 4, "role": "client", "news_opt_in": True, "created_at": NOW},
         {"telegram_user_id": 5, "role": "client", "news_opt_in": False, "created_at": NOW},
         {
@@ -176,6 +183,25 @@ def test_unsubscribe_is_own_only_and_cancels_unsent_news(tmp_path):
             assert items[0]["sent"] == 1 and items[0]["unsubscribed"] == 1
             rows = await all_rows(engine, outbox)
             assert len([r for r in rows if r["kind"] == "broadcast.summary"]) == 1
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_subscribe_restores_own_explicit_opt_in(tmp_path):
+    async def scenario():
+        engine = create_db(tmp_path / "subscribe.db")
+        try:
+            service = await seeded(engine)
+            assert await service.unsubscribe(3, NOW)
+            assert await service.subscribe(3, "message-101", NOW)
+            assert not await service.subscribe(3, "message-101", NOW)
+            with pytest.raises(AccessDenied):
+                await service.subscribe(4, "message-102", NOW)
+            assert await service.subscribe(2, "message-103", NOW)
+            rows = await all_rows(engine, outbox)
+            assert len([r for r in rows if r["kind"] == "broadcast.subscribed"]) == 2
         finally:
             await engine.dispose()
 

@@ -27,7 +27,7 @@ def number(value: str) -> int:
 def build_router(service: BroadcastService, clock: Callable[[], datetime]) -> Router:
     router = Router(name="broadcasts")
 
-    @router.message(Command("announce", "unsubscribe"))
+    @router.message(Command("announce", "unsubscribe", "subscribe"))
     async def command(message: Message, data: CommandObject) -> None:
         actor = message.from_user
         if actor is None or actor.is_bot or not private(message, actor.id):
@@ -35,6 +35,8 @@ def build_router(service: BroadcastService, clock: Callable[[], datetime]) -> Ro
         try:
             if data.command == "unsubscribe" and not data.args:
                 await service.unsubscribe(actor.id, clock())
+            elif data.command == "subscribe" and not data.args:
+                await service.subscribe(actor.id, str(message.message_id), clock())
             elif data.command == "announce":
                 segment_name, body = (data.args or "").split(maxsplit=1)
                 photo = message.photo[-1].file_id if message.photo else None
