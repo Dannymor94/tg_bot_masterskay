@@ -1,8 +1,10 @@
 """T-103 preparation tests: deterministic, synthetic, zero network and credentials."""
 
 import json
+from typing import cast
 
 import pytest
+from pydantic import JsonValue
 
 from app.integrations.yclients_policy import ApiMatrix, load_matrix
 from scripts.spike_preflight import (
@@ -77,7 +79,7 @@ def test_shape_sanitizes_pii_in_values_and_dynamic_keys():
         "count": 7,
         "nested": [{"phone": synthetic_phone, "name": synthetic_name, "token": "secret"}],
     }
-    artifact = safe_fixture_document("records.list", raw)
+    artifact = safe_fixture_document("records.list", cast(JsonValue, raw))
     encoded = json.dumps(artifact, ensure_ascii=False)
     for value in (synthetic_phone, synthetic_name, "1234567", "2026-11-13", "secret"):
         assert value not in encoded
@@ -110,7 +112,7 @@ def test_unknown_deep_and_non_json_types_fail_closed():
 
 def test_list_samples_are_bounded_and_scalar_content_hidden():
     raw = [{"record_id": i, "phone": f"secret-{i}"} for i in range(30)]
-    sanitized = fixture_shape(raw)
+    sanitized = fixture_shape(cast(JsonValue, raw))
     assert isinstance(sanitized, list)
     assert len(sanitized) == 3
     assert all(x == {"phone": "<str>", "record_id": "<int>"} for x in sanitized)
