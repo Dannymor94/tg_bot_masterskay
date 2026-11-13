@@ -11,7 +11,9 @@ from aiogram.types import Message
 from pydantic import SecretStr
 
 from app.bot.tasks import build_router as task_router
+from app.bot.client import build_router as build_client_router
 from app.services.access import AccessDenied
+from app.services.client_onboarding import ClientService
 from app.services.invites import InviteService
 from app.services.tasks import TaskService
 
@@ -66,6 +68,11 @@ async def poll(bot: Bot, service: InviteService, stopped: asyncio.Event) -> None
     dispatcher.include_router(
         task_router(
             TaskService(service.engine, service.owner_id, service.cfg), lambda: datetime.now(UTC)
+        )
+    )
+    dispatcher.include_router(
+        build_client_router(
+            ClientService(service.engine, service.owner_id, service.cfg), lambda: datetime.now(UTC)
         )
     )
     polling = asyncio.create_task(
