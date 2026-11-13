@@ -20,3 +20,9 @@ INVITE_ACCEPTED = {
 INVITE_LINK = "Одноразовое приглашение: https://t.me/{username}?start=invite_{token}"
 
 ACCESS_REVOKED = "Доступ пользователя {user_id} отозван."
+
+# T-102: safe YCLIENTS adapter errors and diagnostic redaction.
+YCLIENTS_ERROR = "Ошибка адаптера YCLIENTS"
+YCLIENTS_DENIED = "Операция YCLIENTS запрещена"
+YCLIENTS_UNAVAILABLE = "Операция YCLIENTS недоступна; примените fallback"
+REDACTED = "[REDACTED]"
