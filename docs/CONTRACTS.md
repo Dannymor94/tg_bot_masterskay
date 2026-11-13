@@ -206,3 +206,43 @@ undelivered expired effects are cancelled. Completed tasks are excluded from the
 queue. Maintenance is wired into run_jobs. R1/R2/R5/R6 sources will be wired in
 T-402/T-303/T-403, R3 in T-304, and R4/binding retry in T-301. No YCLIENTS calls
 are introduced here.
+## Клиентская привязка T-301 / граница с T-203
+
+`Candidate(client_id: positive int, phone: SecretStr)` — внутренний DTO поиска
+клиента, не схема ответа YCLIENTS. `ClientLookup.candidates(SecretStr)` возвращает
+кандидатов только из доверенного адаптера; сейчас runtime использует
+`UnavailableClientLookup`. Подключать внешний адаптер можно после T-103.
+Ноль/несколько совпадений, ошибка или timeout оставляют пользователя без ID и
+создают R4. Телефон не попадает в логи, kv, users, аудит или outbox.
+Привязка преподавателей (staff/renter) остаётся T-401 и не повышает роль client.
+
+`ClientService.start/choice/contact/retry` сериализованы `BEGIN IMMEDIATE`;
+состояние и обработанные request ID хранятся в kv без телефона. Epoch кнопок —
+message ID последнего /start; смена этапа делает прежние кнопки недействительными.
+Принятый выбор новости нельзя изменить повторной кнопкой. source — первая
+корректная метка src_… при создании пользователя, без последующей перезаписи.
+`client.onboard` разрешает только действия клиента над собой, `client.retry` —
+только admin/owner над клиентом; свежие права адресата проверяются при повторе.
+
+R4 использует существующую таблицу tasks и поля TaskDraft: code=R4,
+requester_id=Telegram ID клиента, ref=строка этого ID,
+dedupe_key=client:r4:<Telegram ID>, title из ru.py. Только body содержит
+нормализованный номер из собственного request_contact. Статусы open/taken —
+неразрешённая R4. `ClientTasks` — локальная граница интеграции; импорта ветки
+T-203 нет. Создание R4, изменения users/kv и уведомления атомарны. Уведомление
+admin содержит только ID задачи и callback cl:retry:<task_id>.
+
+**Требование к интеграции T-203:** никогда не копировать body R4 в outbox,
+аудит или логи. Любое закрытие R4 должно очистить body в той же транзакции.
+Кнопку «Повторить привязку» направлять в `ClientService.retry`, а не выдавать
+YCLIENTS ID вручную. При успехе retry стирает body всех R4 данного клиента,
+закрывает их и сохраняет ID одной транзакцией. Ошибка оставляет номер только в
+открытой задаче. Пока источник недоступен, администратор может повторять поиск,
+но успешная live-привязка заблокирована. Автоматическое переоткрытие закрытой
+без привязки R4 не входит в протокол; T-203 не должен закрывать такую задачу
+обычным «Готово» без решения этого сценария.
+
+Outbox payload_min.reply_markup — JSON-строка Telegram-клавиатуры (сохраняется
+скалярный контракт OutboxDraft). Sender валидирует клавиатуру при отправке;
+request_contact и inline-кнопки отправляются только через outbox. Тихие часы
+и границы гарантии доставки T-105 сохраняются.
