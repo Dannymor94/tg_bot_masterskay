@@ -311,7 +311,9 @@ def test_two_pending_broadcasts_reconciled_after_telegram_block(tmp_path):
             assert items[first]["state"] == "done"
             assert items[second]["state"] == "done"
             assert items[first]["blocked"] == items[second]["blocked"] == 1
-            reports = [r for r in await all_rows(engine, outbox) if r["kind"] == "broadcast.summary"]
+            reports = [
+                r for r in await all_rows(engine, outbox) if r["kind"] == "broadcast.summary"
+            ]
             assert len(reports) == 2
         finally:
             await engine.dispose()
