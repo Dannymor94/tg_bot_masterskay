@@ -10,8 +10,10 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
 from pydantic import SecretStr
 
+from app.bot.tasks import build_router as task_router
 from app.services.access import AccessDenied
 from app.services.invites import InviteService
+from app.services.tasks import TaskService
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +63,17 @@ def build_router(service: InviteService, clock: Callable[[], datetime]) -> Route
 async def poll(bot: Bot, service: InviteService, stopped: asyncio.Event) -> None:
     dispatcher = Dispatcher()
     dispatcher.include_router(build_router(service, lambda: datetime.now(UTC)))
+    dispatcher.include_router(
+        task_router(
+            TaskService(service.engine, service.owner_id, service.cfg), lambda: datetime.now(UTC)
+        )
+    )
     polling = asyncio.create_task(
         dispatcher.start_polling(
             bot,
             handle_signals=False,
             close_bot_session=False,
-            allowed_updates=["message"],
+            allowed_updates=["message", "callback_query"],
             handle_as_tasks=False,
         )
     )

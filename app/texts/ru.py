@@ -8,7 +8,8 @@ ROLE_MENU = {
     "client": "Доступ клиента подтверждён.",
     "teacher": "Доступ преподавателя подтверждён.",
     "admin": (
-        "Доступ администратора подтверждён. /invite teacher; владелец: /invite admin, /revoke ID."
+        "Доступ администратора подтверждён. /tasks — очередь; /task текст — новая задача. "
+        "/invite teacher; владелец: /invite admin, /revoke ID."
     ),
 }
 
