@@ -246,6 +246,79 @@ def test_photo_sender_attaches_unsubscribe_keyboard(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_photo_preview_and_transactional_enqueue_rollback(tmp_path, monkeypatch):
+    from app.services import broadcasts as module
+
+    async def scenario():
+        engine = create_db(tmp_path / "preview-photo.db")
+        try:
+            service = await seeded(engine)
+            original = module.enqueue
+
+            async def fail(*args, **kwargs):
+                raise RuntimeError("synthetic preview failure")
+
+            monkeypatch.setattr(module, "enqueue", fail)
+            with pytest.raises(RuntimeError):
+                await service.create(
+                    1, "photo-1", "clients_all", "Synthetic", NOW,
+                    photo_file_id="synthetic-photo-id",
+                )
+            assert await all_rows(engine, broadcasts) == []
+            assert await all_rows(engine, outbox) == []
+            monkeypatch.setattr(module, "enqueue", original)
+            identifier = await service.create(
+                1, "photo-1", "clients_all", "Synthetic", NOW,
+                photo_file_id="synthetic-photo-id",
+            )
+            items = await all_rows(engine, outbox)
+            assert [r["kind"] for r in items] == [
+                "broadcast.preview.photo", "broadcast.preview"
+            ]
+            assert items[0]["payload_min"]["photo_file_id"] == "synthetic-photo-id"
+            assert items[1]["payload_min"]["text"].startswith(f"Рассылка №{identifier}")
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_two_pending_broadcasts_reconciled_after_telegram_block(tmp_path):
+    from aiogram.exceptions import TelegramForbiddenError
+    from aiogram.methods import SendMessage
+
+    async def scenario():
+        engine = create_db(tmp_path / "telegram-block.db")
+        try:
+            service = await seeded(engine)
+            first = await service.create(1, "b1", "clients_all", "One", NOW)
+            second = await service.create(1, "b2", "clients_all", "Two", NOW)
+            assert await service.confirm(1, first, NOW) == 2
+            assert await service.confirm(1, second, NOW) == 2
+
+            async def transport(row):
+                if row["kind"] == "broadcast.news" and row["telegram_user_id"] == 3:
+                    raise TelegramForbiddenError(
+                        method=SendMessage(chat_id=3, text="Synthetic"),
+                        message="Synthetic forbidden",
+                    )
+
+            for n in range(16):
+                await send_one(
+                    engine, transport, service.cfg, NOW + timedelta(seconds=n * 2)
+                )
+            items = {r["id"]: r for r in await all_rows(engine, broadcasts)}
+            assert items[first]["state"] == "done"
+            assert items[second]["state"] == "done"
+            assert items[first]["blocked"] == items[second]["blocked"] == 1
+            reports = [r for r in await all_rows(engine, outbox) if r["kind"] == "broadcast.summary"]
+            assert len(reports) == 2
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
 def make_update(actor, text=None, *, callback=None, chat=None, kind="private"):
     message = Message(
         message_id=10,
