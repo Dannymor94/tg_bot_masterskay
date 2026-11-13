@@ -72,9 +72,7 @@ ALLOWED = {
         (actor, "self")
         for actor in ("client", "client_consent", "teacher", "renter", "admin", "owner")
     },
-    "questions.ask": {
-        (actor, "self") for actor in ("client_consent", "teacher", "renter")
-    },
+    "questions.ask": {(actor, "self") for actor in ("client_consent", "teacher", "renter")},
     "invite.admin": {("owner", "none")},
     "invite.teacher": {("owner", "none"), ("admin", "none")},
     "access.revoke": {("owner", "other_admin"), ("owner", "other_teacher")},
