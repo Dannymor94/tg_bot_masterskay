@@ -10,6 +10,23 @@ NOW = datetime(2026, 1, 1, tzinfo=UTC)
 ACTORS = {
     "unknown": User(telegram_user_id=10, role="client"),
     "client": User(telegram_user_id=10, role="client", yclients_client_id=50),
+    "client_consent": User(
+        telegram_user_id=10, role="client", yclients_client_id=50, consent_at=NOW
+    ),
+    "client_blocked": User(
+        telegram_user_id=10,
+        role="client",
+        yclients_client_id=50,
+        consent_at=NOW,
+        blocked_at=NOW,
+    ),
+    "teacher_revoked": User(
+        telegram_user_id=10,
+        role="teacher",
+        teacher_kind="staff",
+        yclients_staff_id=60,
+        access_revoked=True,
+    ),
     "teacher_pending": User(telegram_user_id=10, role="teacher"),
     "teacher": User(
         telegram_user_id=10, role="teacher", teacher_kind="staff", yclients_staff_id=60
@@ -47,16 +64,28 @@ TARGETS = {
 }
 # Independent explicit allow-list. Everything outside these cells must be denied.
 ALLOWED = {
-    "client.onboard": {(actor, "self") for actor in ("unknown", "client")},
+    "client.onboard": {(actor, "self") for actor in ("unknown", "client", "client_consent")},
     "client.retry": {
         (actor, target) for actor in ("admin", "owner") for target in ("self", "other_client")
     },
-    "menu": {(actor, "self") for actor in ("client", "teacher", "renter", "admin", "owner")},
+    "menu": {
+        (actor, "self")
+        for actor in ("client", "client_consent", "teacher", "renter", "admin", "owner")
+    },
+    "questions.ask": {(actor, "self") for actor in ("client_consent", "teacher", "renter")},
     "invite.admin": {("owner", "none")},
     "invite.teacher": {("owner", "none"), ("admin", "none")},
     "access.revoke": {("owner", "other_admin"), ("owner", "other_teacher")},
     "invite.redeem": {
-        (actor, "self") for actor in ("unknown", "client", "teacher_pending", "teacher", "renter")
+        (actor, "self")
+        for actor in (
+            "unknown",
+            "client",
+            "client_consent",
+            "teacher_pending",
+            "teacher",
+            "renter",
+        )
     },
 }
 
