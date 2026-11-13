@@ -57,6 +57,38 @@ T-101 фиксирует только этот контракт и исполь�
 - Таймаут всех фаз HTTPX, список пауз и предел ожидания Retry-After заданы в `studio.yaml → yclients_http`. По умолчанию первая попытка + три повтора с паузами 1/2/4 секунды при transport errors, HTTP 429 и 5xx. Остальные ошибки HTTP и некорректный JSON не повторяются. Retry-After (секунды или HTTP-date) увеличивает паузу; превышение лимита завершает вызов ошибкой, не приводит к преждевременному повтору. Sleep и часы передаются параметрами для тестов.
 - `redact()` рекурсивно сохраняет структуру, числовые `id`/`*_id`, bool и null; остальные скаляры скрывает. Это консервативная политика до подтверждения полей в T-103, включая сокрытие дат и числовых агрегатов. Имена, телефоны, токены и произвольный текст не возвращаются. Сырые ответы не сохраняются и payload не логируется даже после redaction. Библиотечные логи HTTPX/httpcore подавлены для процесса: они могут включать query/headers. Исключения адаптера не содержат URL, body или текст исключений транспорта; доступны только безопасный тип ошибки и HTTP status code.
 
+## T-102b: fail-closed adapter contract (supersedes former T-102 paragraph)
+
+`request()` and `paginate()` are **diagnostic-only**, returning sanitized
+JSON. Sanitization is fail-closed and drops unknown dictionary keys: keys may
+themselves contain PII. Even the values of date/count/price labels are masked;
+these diagnostic methods must not feed domain normalization.
+
+For trusted consumers, `request_normalized(..., normalize=...)` and
+`paginate_normalized(..., decode_page=..., normalize_item=...)` expose only
+`pydantic.BaseModel` internal DTOs. Raw JSON exists solely as a private,
+short-lived, in-memory value while the caller-supplied decoder processes it.
+The decoder must come from independently confirmed T-103 fixtures and must not
+log, persist, or return the raw response or unapproved PII. Errors are wrapped
+in safe `AdapterError`, which never echoes the payload.
+
+`docs/API_MATRIX.yaml` does not grant network access merely by marking a
+route `status: verified`: **operation ID + exact HTTP method + exact route
+template** must also be present in code-reviewed
+`app/integrations/yclients_guards.py:SAFE_READ_ROUTES`. This rule applies to
+both regular execution and the owner-only `allow_pending` spike. Legitimate
+new endpoint discoveries need a code review and allowlist update. T-103 may
+remove all remaining `candidates` after copying the successful approved
+route into `path`; the built-in allowlist still authorizes that exact route.
+
+Pagination rejects exact repeated non-empty pages (canonical SHA-256 digest
+computed only in memory), a declared `has_more` with an empty page, oversized
+pages, invalid decoder output and max-page exhaustion. This prevents common
+replay/non-progress corruption but **cannot prove all page overlap or source
+completeness** without stable record identity, confirmed pagination envelope
+and full-coverage checks from T-103. T-104 must fail closed if those invariants
+are not established.
+
 ## Побочные эффекты
 
 `services` не отправляет Telegram напрямую: создаёт запись `outbox` с `dedupe_key` в той же транзакции, что задача/событие. `outbox sender` доставляет, обрабатывает 429/backoff и сохраняет состояние. Подтверждённая доставка не равна выполнению задачи; повторная обработка не создаёт второй outbox record.
