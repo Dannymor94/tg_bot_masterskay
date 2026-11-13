@@ -1,0 +1,32 @@
+name: Temporary T-305b Ruff diff
+on:
+  push:
+    branches: [t-305b-main-announcements]
+permissions:
+  contents: read
+jobs:
+  exact-format-diff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      UV_PYTHON: "3.12"
+      UV_NO_PROGRESS: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
+        with:
+          version: "0.12.5"
+          enable-cache: false
+      - run: uv sync --frozen
+      - name: Exact formatting patch (no writes)
+        run: |
+          uv run --frozen ruff format --diff app/jobs/outbox.py app/services/broadcast_delivery.py app/services/broadcasts.py tests/integration/test_broadcasts.py || true
+      - name: Ruff lint and Pyright check
+        run: |
+          uv run --frozen ruff check . || true
+          uv run --frozen pyright || true
