@@ -1,0 +1,48 @@
+name: Python 3.12 checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Ruff / Pyright / pytest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    env:
+      UV_PYTHON: "3.12"
+      UV_NO_PROGRESS: "1"
+
+    steps:
+      - name: Checkout (read-only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.12.5"
+          enable-cache: false
+
+      - name: Sync frozen dependencies
+        run: uv sync --frozen
+
+      - name: Run the complete quality gate
+        run: make check
