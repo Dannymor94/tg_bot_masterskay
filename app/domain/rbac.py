@@ -30,7 +30,12 @@ def can(user: User, action: str, target: RecordSnapshot | User | None = None) ->
         return user.role == "admin" and isinstance(target, User) and target.role == "client"
     if action == "questions.ask":
         # Only currently linked clients/teachers can send business questions.
-        return own and user.role in ("client", "teacher") and can(user, "menu", target)
+        return (
+            own
+            and user.role in ("client", "teacher")
+            and (user.role != "client" or user.consent_at is not None)
+            and can(user, "menu", target)
+        )
     if action == "invite.redeem":
         return own and user.role in ("client", "teacher") and not user.is_owner
     if action == "menu":

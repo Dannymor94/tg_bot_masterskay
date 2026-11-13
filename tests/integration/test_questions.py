@@ -59,6 +59,12 @@ async def seeded(engine):
                     "blocked_at": NOW,
                     "created_at": NOW,
                 },
+                {
+                    "telegram_user_id": 9,
+                    "role": "client",
+                    "yclients_client_id": 59,
+                    "created_at": NOW,
+                },
             ],
         )
     return question, TaskService(engine, 1, load_studio())
@@ -104,6 +110,14 @@ def test_question_through_admin_reply_and_exactly_once(task_db):
             assert reply_rows[0]["telegram_user_id"] == 2
             assert "Synthetic answer" in reply_rows[0]["payload_min"]["text"]
             assert updated["state"] == "done"
+            # After text TTL clears the question, a replay cannot silently
+            # reinterpret that old Telegram message ID with different text.
+            async with engine.begin() as db:
+                await db.execute(
+                    tasks.update().where(tasks.c.id == task_id).values(body="")
+                )
+            with pytest.raises(ValueError):
+                await service.ask(2, "msg-10", "altered after TTL", NOW)
         finally:
             await engine.dispose()
 
@@ -116,7 +130,7 @@ def test_teacher_and_permissions_fail_closed(task_db):
         try:
             service, _ = await seeded(engine)
             assert await service.ask(3, "teacher-1", "Question from teacher", NOW) > 0
-            for actor in (1, 4, 6, 7, 8, 999):
+            for actor in (1, 4, 6, 7, 8, 9, 999):
                 with pytest.raises(AccessDenied):
                     await service.ask(actor, f"rejected-{actor}", "Synthetic", NOW)
             for invalid in ("", "  ", "x" * 1025):

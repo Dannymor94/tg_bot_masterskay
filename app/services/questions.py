@@ -38,7 +38,7 @@ class QuestionService(AccessService):
                 if (
                     existing["code"] != "R3"
                     or existing["requester_id"] != actor_id
-                    or (existing["body"] and existing["body"] != body)
+                    or existing["body"] != body
                 ):
                     raise ValueError("question replay content conflict")
                 task_id = int(existing["id"])
