@@ -203,3 +203,29 @@ class TaskService(AccessService):
             )
             await card(db, task_id, actor_id, "done", self.cfg, now)
             return True
+
+    async def reply_prompt(
+        self, actor_id: int, task_id: int, request_id: str, now: datetime
+    ) -> None:
+        async with self.transaction(now) as db:
+            actor = await self.authorize(db, actor_id, "tasks.reply")
+            row = (await db.execute(select(tasks).where(tasks.c.id == task_id))).mappings().first()
+            if (
+                row is None
+                or row["code"] != "R3"
+                or row["state"] != "taken"
+                or (row["taken_by"] != actor_id and not actor.is_owner)
+            ):
+                raise AccessDenied()
+            await enqueue(
+                db,
+                OutboxDraft(
+                    telegram_user_id=actor_id,
+                    kind="task.reply_help",
+                    payload_min={"task_id": task_id, "text": ru.TASK_REPLY_HELP.format(id=task_id)},
+                    next_attempt_at=now,
+                    dedupe_key=task_key(task_id, actor_id, "prompt", request_id),
+                ),
+                self.cfg,
+                now,
+            )
