@@ -50,7 +50,8 @@ def test_fresh_permissions(task_db, action, actor):
 
 
 @pytest.mark.parametrize("action", ["manual", "take", "finish", "reply"])
-def test_audit_failure_rolls_back_all_effects(task_db, monkeypatch, action):
+@pytest.mark.parametrize("failure", ["audit", "outbox"])
+def test_effect_failure_rolls_back_all_effects(task_db, monkeypatch, action, failure):
     async def scenario():
         engine = create_db(task_db)
         service = TaskService(engine, 1, load_studio())
@@ -65,10 +66,19 @@ def test_audit_failure_rolls_back_all_effects(task_db, monkeypatch, action):
             async with engine.connect() as db:
                 before = [(await db.execute(select(t))).all() for t in (tasks, outbox, audit_log)]
 
-            async def fail(*args):
-                raise RuntimeError("synthetic audit failure")
+            from app.services import tasks as task_service
 
-            monkeypatch.setattr(service, "audit", fail)
+            original_enqueue = task_service.enqueue
+
+            async def fail(*args):
+                if failure == "outbox":
+                    await original_enqueue(*args)
+                raise RuntimeError("synthetic effect failure")
+
+            if failure == "audit":
+                monkeypatch.setattr(service, "audit", fail)
+            else:
+                monkeypatch.setattr(task_service, "enqueue", fail)
             with pytest.raises(RuntimeError):
                 if action == "manual":
                     await service.manual(1, "new", "synthetic", NOW)
@@ -119,6 +129,36 @@ def test_event_task_notifications_rollback_and_content_conflict(task_db):
                     await create_task(
                         db, TaskDraft(**{**draft.model_dump(), "body": "changed"}), service.cfg, NOW
                     )
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("field,value", [("body", "changed"), ("code", "R8"), ("requester_id", 4)])
+def test_closed_and_expired_tasks_reject_content_conflicts(task_db, field, value):
+    from app.jobs.tasks import maintain
+
+    async def scenario():
+        engine = create_db(task_db)
+        service = TaskService(engine, 1, load_studio())
+        draft = rule("R3", "question", service.cfg, NOW, body="synthetic", requester_id=3)
+        assert draft is not None
+        try:
+            await seed(service)
+            async with service.transaction(NOW) as db:
+                task_id = await create_task(db, draft, service.cfg, NOW)
+            await service.take(1, task_id, NOW)
+            await service.finish(1, task_id, NOW)
+            for instant in [NOW, NOW + timedelta(days=service.cfg.tasks.done_ttl_days)]:
+                await maintain(engine, service.cfg, instant)
+                with pytest.raises(ValueError, match="content conflict"):
+                    async with service.transaction(instant) as db:
+                        await create_task(
+                            db, draft.model_copy(update={field: value}), service.cfg, instant
+                        )
+                async with service.transaction(instant) as db:
+                    assert await create_task(db, draft, service.cfg, instant) == task_id
         finally:
             await engine.dispose()
 

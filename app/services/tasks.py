@@ -4,13 +4,14 @@ Actor IDs are trusted transport input, never command arguments. Business source
 adapters may call create_task inside their existing BEGIN IMMEDIATE transaction.
 """
 
-from datetime import datetime
+import hashlib
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.db.models import tasks, users
+from app.db.models import kv, tasks, users
 from app.domain.models import OutboxDraft, TaskDraft
 from app.domain.tasks import RULES, rule, task_key
 from app.services.access import AccessDenied, AccessService
@@ -73,21 +74,29 @@ async def create_task(
         .mappings()
         .first()
     )
+    # Keep a non-reversible identity after TTL; never retain a phone-derived digest.
+    normalized = draft.model_copy(
+        update={"due_at": draft.due_at.astimezone(UTC) if draft.due_at else None}
+    )
+    identity = normalized.model_dump_json(exclude={"body"} if draft.code == "R4" else set())
+    fingerprint = hashlib.sha256(identity.encode()).hexdigest()
     if previous is not None:
-        # A completed/redacted task must never regain its text on replay.
-        identity = draft.model_dump()
-        if previous["state"] != "done":
-            for key, value in identity.items():
-                if key == "body" and draft.code == "R4" and previous["state"] != "open":
-                    continue
-                if previous[key] != value:
-                    raise ValueError("task dedupe_key content conflict")
+        saved = (
+            await db.execute(
+                select(kv.c.value).where(kv.c.key == f"task:identity:{previous['id']}")
+            )
+        ).scalar_one_or_none()
+        if saved != fingerprint or (
+            draft.code == "R4" and previous["state"] == "open" and previous["body"] != draft.body
+        ):
+            raise ValueError("task dedupe_key content conflict")
         return previous["id"]
     task_id = (
         await db.execute(
             insert(tasks).values(**draft.model_dump(), last_ping_at=now).returning(tasks.c.id)
         )
     ).scalar_one()
+    await db.execute(kv.insert().values(key=f"task:identity:{task_id}", value=fingerprint))
     await notify_admins(db, task_id, "created", cfg, now)
     return task_id
 

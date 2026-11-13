@@ -42,7 +42,9 @@ async def render_card(
             state=task["state"],
             title=task["title"],
             body=task["body"],
-            due=due.astimezone(ZoneInfo(cfg.studio.timezone)).isoformat() if due else "—",
+            due=due.astimezone(ZoneInfo(cfg.studio.timezone)).isoformat()
+            if due
+            else ru.TASK_NO_DUE,
         ),
         "task_id": task["id"],
         "take": task["state"] == "open",

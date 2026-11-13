@@ -36,6 +36,7 @@ TASK_TITLES = {
     "R6": "Предложить окно кандидатам",
     "R8": "Задача администратора",
 }
+TASK_NO_DUE = "—"
 TASK_CARD = "Задача #{id} · {code} · {state}\n{title}\n{body}\nСрок: {due}"
 TASK_TAKE = "Взять"
 TASK_DONE = "Готово"
