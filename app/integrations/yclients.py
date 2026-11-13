@@ -263,8 +263,11 @@ class YclientsClient:
     ) -> list[JsonValue]:
         """Diagnostic-only pagination. Do not pass sanitized records to T-104."""
         raw = await self._paginate_raw(
-            operation_id, values, decode_page=decode_page,
-            candidate_index=candidate_index, body=body,
+            operation_id,
+            values,
+            decode_page=decode_page,
+            candidate_index=candidate_index,
+            body=body,
         )
         return [redact(item) for item in raw]
 
@@ -280,8 +283,11 @@ class YclientsClient:
     ) -> list[NormalizedT]:
         """Trusted T-103 decoder maps in-memory JSON to verified internal DTOs."""
         raw = await self._paginate_raw(
-            operation_id, values, decode_page=decode_page,
-            candidate_index=candidate_index, body=body,
+            operation_id,
+            values,
+            decode_page=decode_page,
+            candidate_index=candidate_index,
+            body=body,
         )
         try:
             normalized = [normalize_item(item) for item in raw]

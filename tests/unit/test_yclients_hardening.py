@@ -126,6 +126,7 @@ def test_redact_discards_pii_in_dynamic_json_keys_and_does_not_mutate():
         "starts_at": "2026-11-13T10:00:00+03:00",
     }
     result = redact(data)
+    assert isinstance(result, dict)
     assert "79991234567" not in repr(result)
     assert "other@example.org" not in repr(result)
     assert "private-secret" not in repr(result)
@@ -153,6 +154,7 @@ def test_trusted_dto_boundary_keeps_dates_and_counts_in_memory(
     async def scenario():
         async with client_factory() as client:
             diagnostic = await client.request("company.get")
+            assert isinstance(diagnostic, dict)
             normalized = await client.request_normalized(
                 "company.get", normalize=normalize
             )
@@ -183,7 +185,7 @@ def test_normalizer_errors_and_untyped_result_do_not_leak_private_json(
             ):
                 with pytest.raises(AdapterError) as error:
                     await client.request_normalized(
-                        "company.get", normalize=normalize
+                        "company.get", normalize=normalize  # type: ignore[arg-type]
                     )
                 assert "private-PII" not in str(error.value)
 
