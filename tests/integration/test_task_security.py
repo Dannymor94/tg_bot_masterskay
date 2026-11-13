@@ -159,6 +159,13 @@ def test_closed_and_expired_tasks_reject_content_conflicts(task_db, field, value
                         )
                 async with service.transaction(instant) as db:
                     assert await create_task(db, draft, service.cfg, instant) == task_id
+                    from zoneinfo import ZoneInfo
+
+                    assert draft.due_at is not None
+                    equivalent = draft.model_copy(
+                        update={"due_at": draft.due_at.astimezone(ZoneInfo("Europe/Moscow"))}
+                    )
+                    assert await create_task(db, equivalent, service.cfg, instant) == task_id
         finally:
             await engine.dispose()
 
