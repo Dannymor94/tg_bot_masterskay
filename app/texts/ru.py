@@ -65,3 +65,15 @@ TASK_R4_HELP = (
 
 # T-304: question receipt contains no user-provided question text.
 QUESTION_RECEIVED = "Вопрос передан администратору. Задача №{id}."
+
+# T-305b: announcement preview, subscriber opt-out and final aggregate status.
+BROADCAST_PREVIEW = "Рассылка №{id} · {segment} · получателей: {count}\n{text}"
+BROADCAST_CONFIRM = "Отправить"
+BROADCAST_CANCEL = "Отменить"
+BROADCAST_UNSUBSCRIBE = "Отписаться"
+BROADCAST_UNSUBSCRIBED = "Вы отписались от новостных рассылок."
+BROADCAST_SUBSCRIBED = "Вы подписались на новости."
+BROADCAST_RESULT = (
+    "Рассылка №{id}: доставлено {sent}, не доставлено {failed}, "
+    "заблокировано {blocked}, отписались до отправки {unsubscribed}."
+)
