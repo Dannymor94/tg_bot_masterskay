@@ -2,6 +2,8 @@
 
 from app.domain.models import RecordSnapshot, User
 
+TASK_ACTIONS = ("tasks.list", "tasks.create", "tasks.take", "tasks.done", "tasks.reply")
+
 ACTIONS = ("menu", "invite.admin", "invite.teacher", "invite.redeem", "access.revoke")
 
 
@@ -11,6 +13,8 @@ def can(user: User, action: str, target: RecordSnapshot | User | None = None) ->
     if user.is_owner and user.role != "admin":
         return False
     own = isinstance(target, User) and target.telegram_user_id == user.telegram_user_id
+    if action in TASK_ACTIONS:
+        return target is None and user.role == "admin"
     if action == "invite.redeem":
         return own and user.role in ("client", "teacher") and not user.is_owner
     if action == "menu":
