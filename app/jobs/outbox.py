@@ -86,12 +86,19 @@ class TelegramSender:
             else:
                 markup = ReplyKeyboardRemove.model_validate(raw_markup)
         if "photo_file_id" in payload:
-            await self.bot.send_photo(
-                chat_id=row["telegram_user_id"],
-                photo=payload["photo_file_id"],
-                caption=payload.get("text"),
-                reply_markup=markup,
-            )
+            if markup is None:
+                await self.bot.send_photo(
+                    chat_id=row["telegram_user_id"],
+                    photo=payload["photo_file_id"],
+                    caption=payload.get("text"),
+                )
+            else:
+                await self.bot.send_photo(
+                    chat_id=row["telegram_user_id"],
+                    photo=payload["photo_file_id"],
+                    caption=payload.get("text"),
+                    reply_markup=markup,
+                )
         elif markup is not None:
             await self.bot.send_message(
                 chat_id=row["telegram_user_id"], text=payload["text"], reply_markup=markup
