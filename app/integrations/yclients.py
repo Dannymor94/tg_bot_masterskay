@@ -1,4 +1,4 @@
-"""Read-only transport. No credentials are loaded here; all responses are sanitized."""
+"""Read-only transport: raw payloads stay inside private, in-memory boundaries."""
 
 import asyncio
 import json
@@ -12,8 +12,10 @@ from string import Formatter
 from urllib.parse import quote, unquote, urlsplit
 
 import httpx
-from pydantic import JsonValue, SecretStr
+from pydantic import BaseModel, JsonValue, SecretStr
+from typing import TypeVar
 
+from app.integrations.yclients_guards import fingerprint_page, safe_read_route
 from app.integrations.yclients_policy import (
     AdapterError,
     ApiMatrix,
@@ -22,6 +24,9 @@ from app.integrations.yclients_policy import (
     redact,
 )
 from app.settings import YclientsHTTP
+
+
+NormalizedT = TypeVar("NormalizedT", bound=BaseModel)
 
 
 @dataclass(frozen=True)
@@ -121,6 +126,8 @@ class YclientsClient:
             if index < 0 or index >= len(operation.candidates):
                 raise OperationDenied
             template = operation.candidates[index]
+        if not safe_read_route(operation_id, template):
+            raise OperationDenied
         try:
             method, target = template.split(" ", 1)
             if method not in {"GET", "POST"}:
@@ -190,6 +197,32 @@ class YclientsClient:
             )
         )
 
+    async def request_normalized(
+        self,
+        operation_id: str,
+        values: Mapping[str, str | int] | None = None,
+        *,
+        normalize: Callable[[JsonValue], NormalizedT],
+        candidate_index: int | None = None,
+        body: dict[str, JsonValue] | None = None,
+    ) -> NormalizedT:
+        """Trusted boundary: inspect raw JSON only in memory, emit a typed DTO.
+
+        The integrator supplies a decoder based on verified T-103 fixtures.
+        No adapter API returns unsanitized JsonValue to application services.
+        """
+        raw = await self._request_json(
+            operation_id, values, candidate_index=candidate_index, body=body
+        )
+        try:
+            normalized = normalize(raw)
+            if not isinstance(normalized, BaseModel):
+                raise ValueError
+            return normalized
+        except Exception:
+            # A normalization error may include PII. Never surface or log it.
+            raise AdapterError from None
+
     async def _request_json(
         self,
         operation_id: str,
@@ -232,6 +265,46 @@ class YclientsClient:
         candidate_index: int | None = None,
         body: dict[str, JsonValue] | None = None,
     ) -> list[JsonValue]:
+        """Diagnostic-only pagination. Do not pass sanitized records to T-104."""
+        raw = await self._paginate_raw(
+            operation_id, values, decode_page=decode_page,
+            candidate_index=candidate_index, body=body,
+        )
+        return [redact(item) for item in raw]
+
+    async def paginate_normalized(
+        self,
+        operation_id: str,
+        values: Mapping[str, str | int] | None = None,
+        *,
+        decode_page: Callable[[JsonValue], DecodedPage],
+        normalize_item: Callable[[JsonValue], NormalizedT],
+        candidate_index: int | None = None,
+        body: dict[str, JsonValue] | None = None,
+    ) -> list[NormalizedT]:
+        """Trusted T-103 decoder maps in-memory JSON to verified internal DTOs."""
+        raw = await self._paginate_raw(
+            operation_id, values, decode_page=decode_page,
+            candidate_index=candidate_index, body=body,
+        )
+        try:
+            normalized = [normalize_item(item) for item in raw]
+            if not all(isinstance(item, BaseModel) for item in normalized):
+                raise ValueError
+            return normalized
+        except Exception:
+            raise AdapterError from None
+
+    async def _paginate_raw(
+        self,
+        operation_id: str,
+        values: Mapping[str, str | int] | None = None,
+        *,
+        decode_page: Callable[[JsonValue], DecodedPage],
+        candidate_index: int | None = None,
+        body: dict[str, JsonValue] | None = None,
+    ) -> list[JsonValue]:
+        """Private: all pages must finish and pass integrity checks before output."""
         count = self._matrix.meta.page_size
         if count is None or count <= 0:
             raise OperationDenied
@@ -240,6 +313,7 @@ class YclientsClient:
         if not {"page", "count"}.issubset(fields):
             raise OperationDenied
         result: list[JsonValue] = []
+        seen_pages: set[bytes] = set()
         for page in range(1, self._policy.max_pages + 1):
             response = await self._request_json(
                 operation_id, {**inputs, "page": page}, candidate_index=candidate_index, body=body
@@ -251,12 +325,20 @@ class YclientsClient:
                     or not isinstance(decoded.items, list)
                     or not isinstance(decoded.has_more, bool)
                     or len(decoded.items) > count
+                    or (decoded.has_more and not decoded.items)
                 ):
                     raise ValueError
+                # Fail closed even if the response envelope changes has_more.
+                # This detects identical pages, not arbitrary overlapping IDs;
+                # T-103 decoders must validate item identity/completeness.
+                if decoded.items:
+                    digest = fingerprint_page(decoded.items)
+                    if digest in seen_pages:
+                        raise ValueError
+                    seen_pages.add(digest)
             except Exception:
                 raise AdapterError from None
-            result.extend(redact(item) for item in decoded.items)
+            result.extend(decoded.items)
             if not decoded.has_more:
                 return result
-        # A bounded failure, never silent truncation or partial success.
         raise AdapterError

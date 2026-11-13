@@ -5,6 +5,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError, model_validator
 
+from app.integrations.yclients_guards import safe_read_route, sanitize_diagnostic
 from app.texts import ru
 
 API_MATRIX_PATH = Path(__file__).resolve().parents[2] / "docs" / "API_MATRIX.yaml"
@@ -64,6 +65,14 @@ class ApiMatrix(BaseModel):
             raise OperationUnavailable(operation.fallback)
         if operation.status != "verified" and not (allow_pending and operation.status == "pending"):
             raise OperationDenied
+        if operation.status == "verified":
+            if operation.path is None or not safe_read_route(operation.id, operation.path):
+                raise OperationDenied
+        elif not operation.candidates or any(
+            not safe_read_route(operation.id, template) for template in operation.candidates
+        ):
+            # Even the explicit owner-only spike cannot mint unsafe API routes.
+            raise OperationDenied
         return operation
 
 
@@ -75,16 +84,9 @@ def load_matrix(path: Path = API_MATRIX_PATH) -> ApiMatrix:
 
 
 def redact(value: JsonValue, *, _key: str = "") -> JsonValue:
-    """Preserve structure, numeric IDs, booleans and null; mask other scalar values.
+    """Fail-closed diagnostics only: never use this to normalize business data.
 
-    No unconfirmed allowlist of external text fields. Never log even sanitized payloads.
+    Unknown JSON keys are discarded because keys themselves may contain PII.
+    The safe key labels are NOT evidence of a verified YCLIENTS schema.
     """
-    if isinstance(value, dict):
-        return {key: redact(item, _key=key) for key, item in value.items()}
-    if isinstance(value, list):
-        return [redact(item) for item in value]
-    if value is None or isinstance(value, bool):
-        return value
-    if isinstance(value, int) and (_key == "id" or _key.endswith("_id")):
-        return value
-    return ru.REDACTED
+    return sanitize_diagnostic(value, _key=_key)
