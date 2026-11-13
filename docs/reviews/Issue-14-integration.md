@@ -53,15 +53,20 @@ kv identity; combined router invite/onboarding coexistence; malformed and
 unprivileged callbacks; functional authorized task callback. Existing T-102b,
 T-105, T-201, T-203 and T-301 tests run together.
 
-Independent [R] must use a separate clean checkout of the published final SHA,
-run `uv sync --frozen && make check`, and inspect the diff against the base and
-both accepted sources. Verdict and exact SHA belong in the draft PR conversation;
-this implementation report does not claim independent acceptance.
+Independent [R]: **APPROVE** on implementation SHA
+`f46718012085e968c036e18679b0b43a6c7df4ae`, tested in separate clean detached
+worktree `tg-bot-issue14-independent-qa`. Python 3.12.14;
+`uv sync --frozen && make check`: **816 passed in 18.27s**, Ruff and Pyright clean.
+No BLOCKER/MAJOR findings. Reviewer independently compared both accepted feature
+sources and confirmed PR #16 adapter/tests and ADR documents were unchanged.
+
+This evidence/PLAN update changes documentation only. The final published SHA
+and independent rerun/verdict are recorded in draft PR #24's conversation.
 
 ## Limits / next action
 
 Runtime ClientLookup remains unavailable until T-103 verifies fixtures. All
 lookup and Telegram transports in tests are synthetic/mocked. No live APIs,
 credentials, merge or deploy. Telegram's existing crash-after-acceptance duplicate
-delivery limitation is unchanged. Next: independent QA, then owner merge decision.
+delivery limitation is unchanged. Next: final documentation-head QA confirmation in PR #24, then owner merge decision.
 PR #11/#12 stay open until the integration is accepted and merged.

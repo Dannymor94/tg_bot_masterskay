@@ -169,9 +169,11 @@
   Take/Done для R4 запрещены с направлением в Retry (Issue #14, ADR-06/09/13).
 - [x] **T-203-301c · AGENT · T-203-301b** Сквозные регрессии lifecycle, keyboards,
   permissions, callbacks, races, rollback; полный make check на Python 3.12.
-- [ ] **T-203-301d · REVIEWER · T-203-301c · [R]** Независимый чистый checkout
+- [x] **T-203-301d · REVIEWER · T-203-301c · [R]** Независимый чистый checkout
   финального SHA: uv sync --frozen && make check; diff review и вердикт в новом
-  draft integration PR. Отчёт: docs/reviews/Issue-14-integration.md.
+  draft integration PR #24. Независимый APPROVE: f467180, Python 3.12.14,
+  816 passed; финальный SHA и повторная проверка docs-only commit — в PR.
+  Отчёт: docs/reviews/Issue-14-integration.md.
 
 ### Этап 4 — Преподаватели и пустые окна
 
@@ -188,6 +190,6 @@ R7 «давно не был» и сегменты по активности · R
 
 T-102b объединена в main через PR #16 (436fd69c). Индивидуально принятые
 T-203 / PR #12 и T-301 / PR #11 перенесены в одну integration branch по Issue #14.
-Следующий шаг — независимый [R] на финальном SHA нового draft PR, затем решение
-владельца о merge. Не объединять/закрывать PR #11/#12 до принятия интеграции.
+Независимый [R] — APPROVE, draft PR #24. Следующий шаг — решение
+владельца о merge после финальной проверки SHA в PR. Не объединять/закрывать PR #11/#12 до принятия интеграции.
 Live YCLIENTS отключён до T-103; T-001 остаётся задачей человека.
