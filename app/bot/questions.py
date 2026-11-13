@@ -28,9 +28,7 @@ def build_router(service: QuestionService, clock: Callable[[], datetime]) -> Rou
         ):
             return
         try:
-            await service.ask(
-                sender.id, str(message.message_id), command.args or "", clock()
-            )
+            await service.ask(sender.id, str(message.message_id), command.args or "", clock())
         except (AccessDenied, ValueError):
             return
         except Exception:
