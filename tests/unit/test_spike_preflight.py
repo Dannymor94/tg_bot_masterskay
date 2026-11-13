@@ -82,8 +82,10 @@ def test_shape_sanitizes_pii_in_values_and_dynamic_keys():
     for value in (synthetic_phone, synthetic_name, "1234567", "2026-11-13", "secret"):
         assert value not in encoded
     assert artifact["verified"] is False
-    assert artifact["schema"]["record_id"] == "<int>"
-    assert artifact["schema"]["starts_at"] == "<str>"
+    schema = artifact["schema"]
+    assert isinstance(schema, dict)
+    assert schema["record_id"] == "<int>"
+    assert schema["starts_at"] == "<str>"
     assert raw[synthetic_phone]["name"] == synthetic_name
 
 
@@ -109,6 +111,7 @@ def test_unknown_deep_and_non_json_types_fail_closed():
 def test_list_samples_are_bounded_and_scalar_content_hidden():
     raw = [{"record_id": i, "phone": f"secret-{i}"} for i in range(30)]
     sanitized = fixture_shape(raw)
+    assert isinstance(sanitized, list)
     assert len(sanitized) == 3
     assert all(x == {"phone": "<str>", "record_id": "<int>"} for x in sanitized)
     assert "secret" not in repr(sanitized)

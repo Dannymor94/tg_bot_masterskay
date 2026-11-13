@@ -10,6 +10,7 @@ import argparse
 import json
 from pathlib import Path
 from string import Formatter
+from typing import Literal, TypedDict
 
 from pydantic import JsonValue
 
@@ -19,6 +20,30 @@ from app.integrations.yclients_policy import ApiMatrix, load_matrix
 
 class PreflightError(ValueError):
     """Static evidence does not justify execution or acceptance."""
+
+
+class CandidatePlan(TypedDict):
+    method: str
+    template: str
+    required_parameters: list[str]
+    read_only_allowlisted: bool
+    api_verified: bool
+
+
+class OperationPlan(TypedDict):
+    operation_id: str
+    current_status: str
+    candidates: list[CandidatePlan]
+    requires_human_evidence: bool
+    auto_promoted: bool
+
+
+class PreflightPlan(TypedDict):
+    mode: Literal["offline-preflight"]
+    network_access: Literal[False]
+    secret_access: Literal[False]
+    confirms_external_api: Literal[False]
+    operations: list[OperationPlan]
 
 
 # These keys are safe schema labels, not verified YCLIENTS response fields.
@@ -44,15 +69,15 @@ def _route_fields(template: str) -> tuple[str, ...]:
         raise PreflightError("invalid route template") from error
 
 
-def make_preflight(matrix: ApiMatrix) -> dict[str, JsonValue]:
+def make_preflight(matrix: ApiMatrix) -> PreflightPlan:
     """Return a deterministic, non-sensitive planning manifest, never API proof."""
-    operations: list[JsonValue] = []
+    operations: list[OperationPlan] = []
     seen: set[str] = set()
     for op in sorted(matrix.operations, key=lambda item: item.id):
         if op.id in seen or op.kind != "read":
             raise PreflightError("non-read or duplicate operation")
         seen.add(op.id)
-        candidates: list[JsonValue] = []
+        candidates: list[CandidatePlan] = []
         for template in op.candidates:
             if not safe_read_route(op.id, template):
                 raise PreflightError("candidate not present in reviewed allowlist")
