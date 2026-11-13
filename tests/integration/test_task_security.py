@@ -5,13 +5,13 @@ import pytest
 from sqlalchemy import select
 
 from app.db.engine import create_db
-from app.db.models import audit_log, events, outbox, tasks, users
+from app.db.models import audit_log, events, outbox, tasks
 from app.domain.models import TaskDraft
 from app.domain.tasks import rule
 from app.services.access import AccessDenied
 from app.services.tasks import TaskService, create_task
 from app.settings import load_studio
-from tests.integration.test_tasks import NOW, seed, task_db  # noqa: F401
+from tests.integration.test_tasks import NOW, seed
 
 
 @pytest.mark.parametrize("action", ["manual", "queue", "take", "finish", "reply", "prompt"])
@@ -57,6 +57,7 @@ def test_audit_failure_rolls_back_all_effects(task_db, monkeypatch, action):
         try:
             await seed(service)
             draft = rule("R3", "question", service.cfg, NOW, body="synthetic", requester_id=3)
+            assert draft is not None
             async with service.transaction(NOW) as db:
                 task_id = await create_task(db, draft, service.cfg, NOW)
             if action in ("finish", "reply"):
@@ -92,6 +93,7 @@ def test_event_task_notifications_rollback_and_content_conflict(task_db):
         engine = create_db(task_db)
         service = TaskService(engine, 1, load_studio())
         draft = rule("R3", "question", service.cfg, NOW, body="synthetic", requester_id=3)
+        assert draft is not None
         try:
             await seed(service)
             with pytest.raises(RuntimeError):
