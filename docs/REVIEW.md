@@ -1,45 +1,44 @@
-# REVIEW — регламент ревью
+# REVIEW — independent acceptance and integration checklist
 
-**Когда:** каждая задача с `[R]`; плюс одно общее ревью всех задач без `[R]` в конце этапа.
-**Вход:** задача из PLAN.md, diff, отчёт исполнителя, ADR из строки «Читать».
-Ревьюер код не переписывает. Отчёту не доверять — самостоятельно запустить `make check`.
+**Applies to:** every `[R]` task, any security/privacy/auth/API/sync or safety-gate change, any new head/base pair whose previous sign-off is invalid, and one independent review of accumulated ordinary tasks at the end of each stage. The reviewer must be different from the author and **read-only**. Follow `AGENTS.md` and ADR-24.
 
-## Чек-лист
+## Evidence first
 
-**Задача**
-- [ ] «Готово» выполнено буквально и подтверждено тестом.
-- [ ] Нет изменений вне задачи и зависимостей сверх стека PLAN.md.
+- [ ] Confirm exact repository, HEAD SHA, BASE SHA, task requirements and complete diff; do not trust the author's report alone.
+- [ ] Reproduce `uv sync --frozen && make check` on Python 3.12 in a clean isolated worktree; capture Ruff/Pyright/pytest results and `git diff --check`.
+- [ ] Verify touched files, dependencies, acceptance criteria, tests and no out-of-scope feature expansion.
+- [ ] For a retarget/rebase or moved main, compare the full new base-to-head patch against previously approved evidence. Filename counts alone are insufficient. Require a new explicit verdict on the current head/base pair.
+- [ ] Inspect safe handling of exceptions/logs, known parsing bounds and error cases; no secret or PII leaks.
 
-**YCLIENTS**
-- [ ] Только операции `kind: read` со статусом `verified`; для `unavailable` применён fallback.
-- [ ] Fixtures без имён и телефонов.
+## YCLIENTS
 
-**Данные и безопасность**
-- [ ] Нет секретов в коде и тестах; в БД нет имён и телефонов из YCLIENTS (кроме номера в открытой R4); в логах только идентификаторы.
-- [ ] `can()` в сервисе для каждого действия и кнопки; клиент не видит чужое, преподаватель — чужие занятия и телефоны.
-- [ ] Привязка принимает только собственный контакт.
-- [ ] Анонсы — только `news_opt_in`; служебные — только участникам занятия; «Отписаться» есть.
+- [ ] Only code-reviewed `kind: read` routes from `SAFE_READ_ROUTES`; normal runtime requires `verified`. Only an owner-authorized `make spike` may inspect reviewed pending read candidates.
+- [ ] API routes and schema derive from `API_MATRIX.yaml` plus independently verified sanitized fixtures. 200 or error code 15 alone proves neither data semantics nor permission cause.
+- [ ] Fixtures and reports contain no client names, phones, tokens, headers, raw bodies, free-text error messages or unapproved identifiers.
+- [ ] Unknown/unavailable operations use documented fallback; no silent promotion to `verified`.
 
-**Детерминизм и надёжность**
-- [ ] Логика — чистые функции с табличными тестами; без сети и реального времени.
-- [ ] Повторный прогон не создаёт новых событий, задач, сообщений.
-- [ ] UNIQUE на каждом побочном эффекте; Telegram только через outbox.
-- [ ] Числа из studio.yaml, тексты из `texts/ru.py`.
+## Authorization, privacy and reliability
 
-**Домен**
-- [ ] «Не смогу» создаёт R2 и ничего не меняет в YCLIENTS.
-- [ ] Занятость зала = записи на колонке зала + групповые события с ресурсом зала.
+- [ ] No real secrets in code/tests/logs. No YCLIENTS names/phones persisted except the temporary own-contact R4 exception per ADR-06.
+- [ ] `can()` is enforced in each service action, including callbacks; clients/teachers cannot access someone else's records or phones. Contact binding accepts only the requesting user's own contact.
+- [ ] News require `news_opt_in`; service notices go only to relevant participants, and unsubscribe is available.
+- [ ] Deterministic domain functions, tabular tests, injected time, UNIQUE effect keys, Telegram only via outbox, UTC persistence / `Europe/Moscow` domain.
+- [ ] Replay and restart do not duplicate tasks/messages; test races, Telegram 429, blocked bot, cancellation after reminder, blank/partial API responses and rollback.
+- [ ] “Cannot come” creates R2, never writes to YCLIENTS. Room occupancy combines room-column records and group activities with that room resource.
+- [ ] No change to deny rules, permissions, secret handling, production behavior or ADR without corresponding authorization and evidence.
 
-**Попытка сломать:** повтор синхронизации, рестарт, два «Взять» сразу, Telegram 429, бот заблокирован, запись отменили после напоминания, пустой ответ API.
+## Verdict and automatic integration
 
-## Вердикт
-
-`BLOCKER` — безопасность, данные, запись в YCLIENTS, выдуманный API, не выполнено «Готово». `MAJOR` — ошибка логики или надёжности, нет теста на важный сценарий. `MINOR`, `NIT` — не блокируют.
+`BLOCKER`: secrets/PII, unauthorized real action, unverified API, unsafe write, broken acceptance. `MAJOR`: logic/reliability error or missing critical test. `MINOR` and `NIT` are nonblocking only when explicitly classified as such.
 
 ```text
-T-XXX — APPROVE | REQUEST_CHANGES
-make check: <итог>
-1. [BLOCKER] path:line — проблема → исправление
+T-XXX — PASS | REQUEST_CHANGES | BLOCKED
+Reviewed HEAD:
+Reviewed BASE:
+Independent checks:
+Findings: [severity] path:line — evidence → required fix
+Scope/limits:
+Recommended next step:
 ```
 
-BLOCKER или MAJOR → REQUEST_CHANGES. Merge — только человек.
+BLOCKER/MAJOR => REQUEST_CHANGES; missing evidence => BLOCKED. A current independent PASS, clean PR and required green CI make an in-scope change **eligible for autonomous coordinator merge**, without a separate owner request. Reviewer does not merge or edit the code. **Code merge never authorizes a live YCLIENTS probe, production release or customer-facing action.**
