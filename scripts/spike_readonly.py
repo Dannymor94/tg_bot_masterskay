@@ -106,6 +106,8 @@ def _categorize(error: AdapterError) -> Category:
         return "denied"
     if error.status_code is None:
         return "no_response_or_malformed"
+    if error.status_code == 403 and error.api_error_code == 15:
+        return "http_403_code_15"
     return f"http_{error.status_code}"
 
 
