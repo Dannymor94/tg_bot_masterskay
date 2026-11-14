@@ -274,6 +274,38 @@ def test_photo_sender_attaches_unsubscribe_keyboard(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_photo_sender_without_markup_omits_reply_markup(monkeypatch):
+    async def scenario():
+        bot = Bot("123:synthetic")
+        send_photo = AsyncMock()
+        send_message = AsyncMock()
+        monkeypatch.setattr(bot, "send_photo", send_photo)
+        monkeypatch.setattr(bot, "send_message", send_message)
+        try:
+            await TelegramSender(bot)(
+                {
+                    "telegram_user_id": 3,
+                    "kind": "broadcast.preview.photo",
+                    "payload_min": {
+                        "text": "Synthetic caption",
+                        "photo_file_id": "synthetic-file-id",
+                    },
+                }
+            )
+
+            send_photo.assert_awaited_once_with(
+                chat_id=3,
+                photo="synthetic-file-id",
+                caption="Synthetic caption",
+            )
+            send_message.assert_not_awaited()
+            assert "reply_markup" not in send_photo.call_args.kwargs
+        finally:
+            await bot.session.close()
+
+    asyncio.run(scenario())
+
+
 def test_photo_preview_and_transactional_enqueue_rollback(tmp_path, monkeypatch):
     from app.services import broadcasts as module
 
