@@ -12,9 +12,7 @@ API_MATRIX_PATH = Path(__file__).resolve().parents[2] / "docs" / "API_MATRIX.yam
 
 
 class AdapterError(Exception):
-    def __init__(
-        self, *, status_code: int | None = None, api_error_code: int | None = None
-    ):
+    def __init__(self, *, status_code: int | None = None, api_error_code: int | None = None):
         super().__init__(ru.YCLIENTS_ERROR)
         self.status_code = status_code
         # Only the explicitly reviewed diagnostic code may cross this boundary.
