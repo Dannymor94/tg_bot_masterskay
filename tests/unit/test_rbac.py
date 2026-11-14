@@ -64,6 +64,8 @@ TARGETS = {
 }
 # Independent explicit allow-list. Everything outside these cells must be denied.
 ALLOWED = {
+    "broadcast.create": {(actor, "none") for actor in ("admin", "owner")},
+    "broadcast.manage": {(actor, "none") for actor in ("admin", "owner")},
     "client.onboard": {(actor, "self") for actor in ("unknown", "client", "client_consent")},
     "client.retry": {
         (actor, target) for actor in ("admin", "owner") for target in ("self", "other_client")

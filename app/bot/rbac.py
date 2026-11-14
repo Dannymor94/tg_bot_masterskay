@@ -10,10 +10,12 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
 from pydantic import SecretStr
 
+from app.bot.broadcasts import build_router as broadcast_router
 from app.bot.client import build_router as build_client_router
 from app.bot.questions import build_router as question_router
 from app.bot.tasks import build_router as task_router
 from app.services.access import AccessDenied
+from app.services.broadcasts import BroadcastService
 from app.services.client_onboarding import ClientService
 from app.services.invites import InviteService
 from app.services.questions import QuestionService
@@ -80,6 +82,12 @@ async def poll(bot: Bot, service: InviteService, stopped: asyncio.Event) -> None
     dispatcher.include_router(
         question_router(
             QuestionService(service.engine, service.owner_id, service.cfg),
+            lambda: datetime.now(UTC),
+        )
+    )
+    dispatcher.include_router(
+        broadcast_router(
+            BroadcastService(service.engine, service.owner_id, service.cfg),
             lambda: datetime.now(UTC),
         )
     )
