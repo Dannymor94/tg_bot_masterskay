@@ -33,6 +33,23 @@ class DecodedPage:
     has_more: bool
 
 
+def _safe_403_error_code(response: httpx.Response) -> int | None:
+    """Inspect a bounded error envelope in memory; never surface response content."""
+    if response.status_code != 403 or len(response.content) > 4096:
+        return None
+    try:
+        payload = response.json()
+    except (ValueError, UnicodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("success") is not False:
+        return None
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return None
+    code = data.get("code")
+    return 15 if isinstance(code, int) and not isinstance(code, bool) and code == 15 else None
+
+
 class _NoTransportPayloads(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         return False
@@ -244,7 +261,10 @@ class YclientsClient:
                     except (json.JSONDecodeError, UnicodeError):
                         raise AdapterError(status_code=status) from None
                 if status != 429 and not response.is_server_error:
-                    raise AdapterError(status_code=status)
+                    raise AdapterError(
+                        status_code=status,
+                        api_error_code=_safe_403_error_code(response) if status == 403 else None,
+                    )
             if attempt == len(self._policy.retry_backoff_seconds):
                 raise AdapterError(
                     status_code=response.status_code if response is not None else None
