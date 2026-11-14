@@ -180,16 +180,12 @@ def test_invalid_page_size_blocks_before_http_or_evidence(
     page_size, respx_mock, client_factory, tmp_path
 ):
     base = load_matrix()
-    matrix = base.model_copy(
-        update={"meta": base.meta.model_copy(update={"page_size": page_size})}
-    )
+    matrix = base.model_copy(update={"meta": base.meta.model_copy(update={"page_size": page_size})})
     respx_mock.route(host="yclients.invalid").respond(200, json={"data": []})
 
     async def scenario():
         async with client_factory(sleep=AsyncMock()) as client:
-            return await run_spike(
-                client=client, matrix=matrix, output_dir=tmp_path, now=NOW
-            )
+            return await run_spike(client=client, matrix=matrix, output_dir=tmp_path, now=NOW)
 
     with pytest.raises(AdapterError) as error:
         asyncio.run(scenario())
@@ -199,26 +195,18 @@ def test_invalid_page_size_blocks_before_http_or_evidence(
     assert not list(tmp_path.iterdir())
 
 
-def test_valid_page_size_reaches_records_list_unchanged(
-    respx_mock, client_factory, tmp_path
-):
+def test_valid_page_size_reaches_records_list_unchanged(respx_mock, client_factory, tmp_path):
     base = load_matrix()
-    matrix = base.model_copy(
-        update={"meta": base.meta.model_copy(update={"page_size": 23})}
-    )
+    matrix = base.model_copy(update={"meta": base.meta.model_copy(update={"page_size": 23})})
     respx_mock.route(host="yclients.invalid").respond(403)
 
     async def scenario():
         async with client_factory(sleep=AsyncMock()) as client:
-            return await run_spike(
-                client=client, matrix=matrix, output_dir=tmp_path, now=NOW
-            )
+            return await run_spike(client=client, matrix=matrix, output_dir=tmp_path, now=NOW)
 
     report = asyncio.run(scenario())
     record_requests = [
-        call.request
-        for call in respx_mock.calls
-        if "/api/v1/records/7" in str(call.request.url)
+        call.request for call in respx_mock.calls if "/api/v1/records/7" in str(call.request.url)
     ]
 
     assert len(record_requests) == 1
