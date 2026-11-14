@@ -237,9 +237,7 @@ def test_403_diagnostic_only_allows_exact_numeric_code_15(
 
     assert records["attempts"][0]["category"] == expected
     assert records["probed_ok"] is False
-    assert sum(
-        "/api/v1/records/7" in str(call.request.url) for call in respx_mock.calls
-    ) == 1
+    assert sum("/api/v1/records/7" in str(call.request.url) for call in respx_mock.calls) == 1
     assert not list(tmp_path.glob("*.json"))
     output = json.dumps(report)
     for private_value in PII:
