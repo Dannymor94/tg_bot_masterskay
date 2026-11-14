@@ -175,6 +175,61 @@ def test_phone_search_probes_privately_without_leaking(respx_mock, client_factor
     assert "+7-999-123-45-67" in post.content.decode()  # proves it reached the wire, not our output
 
 
+@pytest.mark.parametrize("page_size", [None, 0, -1, False, True])
+def test_invalid_page_size_blocks_before_http_or_evidence(
+    page_size, respx_mock, client_factory, tmp_path
+):
+    base = load_matrix()
+    matrix = base.model_copy(
+        update={"meta": base.meta.model_copy(update={"page_size": page_size})}
+    )
+    respx_mock.route(host="yclients.invalid").respond(200, json={"data": []})
+
+    async def scenario():
+        async with client_factory(sleep=AsyncMock()) as client:
+            return await run_spike(
+                client=client, matrix=matrix, output_dir=tmp_path, now=NOW
+            )
+
+    with pytest.raises(AdapterError) as error:
+        asyncio.run(scenario())
+
+    assert "secret-token" not in str(error.value)
+    assert not respx_mock.calls
+    assert not list(tmp_path.iterdir())
+
+
+def test_valid_page_size_reaches_records_list_unchanged(
+    respx_mock, client_factory, tmp_path
+):
+    base = load_matrix()
+    matrix = base.model_copy(
+        update={"meta": base.meta.model_copy(update={"page_size": 23})}
+    )
+    respx_mock.route(host="yclients.invalid").respond(403)
+
+    async def scenario():
+        async with client_factory(sleep=AsyncMock()) as client:
+            return await run_spike(
+                client=client, matrix=matrix, output_dir=tmp_path, now=NOW
+            )
+
+    report = asyncio.run(scenario())
+    record_requests = [
+        call.request
+        for call in respx_mock.calls
+        if "/api/v1/records/7" in str(call.request.url)
+    ]
+
+    assert len(record_requests) == 1
+    assert record_requests[0].url.params["count"] == "23"
+    assert record_requests[0].url.params["page"] == "1"
+    records = next(r for r in report["operations"] if r["operation_id"] == "records.list")
+    assert records["attempts"][0]["category"] == "http_403"
+    assert records["probed_ok"] is False
+    assert not list(tmp_path.iterdir())
+
+
 def test_request_budget_fails_closed(respx_mock, client_factory, tmp_path):
     respx_mock.route(host="yclients.invalid").respond(200, json={})
     with pytest.raises(AdapterError):
