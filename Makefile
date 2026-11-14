@@ -1,4 +1,4 @@
-.PHONY: setup check test run migrate health spike-plan
+.PHONY: setup check test run migrate health spike-plan spike
 setup:
 	uv sync --frozen
 check:
@@ -17,3 +17,9 @@ health:
 
 spike-plan:
 	uv run --frozen python -m scripts.spike_preflight
+
+# Owner-only live read-only probe. Fails closed without --authorize-live-read.
+# The owner runs it manually after independent QA, e.g.:
+#   make spike SPIKE_ARGS=--authorize-live-read
+spike:
+	uv run --frozen python -m scripts.spike_readonly $(SPIKE_ARGS)
