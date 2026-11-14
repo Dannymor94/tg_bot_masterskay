@@ -203,3 +203,83 @@ def test_authorized_non_tty_runs_without_prompt(monkeypatch):
     monkeypatch.setattr(spike_readonly, "_run_live", fake_run)
     monkeypatch.setattr(spike_readonly.sys.stdin, "isatty", lambda: False)
     assert main(["--authorize-live-read"]) == 0
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (
+            {
+                "success": False,
+                "data": {"code": 15, "message": "PRIVATE-PERSON secret-token"},
+                "meta": {"phone": "+7-999-123-45-67"},
+            },
+            "http_403_code_15",
+        ),
+        ({"success": False, "data": {"code": 16, "message": "secret-token"}}, "http_403"),
+        ({"success": False, "data": {"code": "15"}}, "http_403"),
+        ({"success": False, "data": {"code": True}}, "http_403"),
+        ({"success": True, "data": {"code": 15}}, "http_403"),
+        ({"data": {"code": 15}}, "http_403"),
+        ({"success": False, "error": {"code": 15}}, "http_403"),
+    ],
+)
+def test_403_diagnostic_only_allows_exact_numeric_code_15(
+    body, expected, respx_mock, client_factory, tmp_path
+):
+    respx_mock.get(url__regex=rf"{HOST}/api/v1/records/7").respond(
+        403, json=body, headers={"X-Debug": "secret-token"}
+    )
+    respx_mock.route(host="yclients.invalid").respond(403)
+
+    report = _run(client_factory(sleep=AsyncMock()), tmp_path)
+    records = next(r for r in report["operations"] if r["operation_id"] == "records.list")
+
+    assert records["attempts"][0]["category"] == expected
+    assert records["probed_ok"] is False
+    assert sum(
+        "/api/v1/records/7" in str(call.request.url) for call in respx_mock.calls
+    ) == 1
+    assert not list(tmp_path.glob("*.json"))
+    output = json.dumps(report)
+    for private_value in PII:
+        assert private_value not in output
+
+
+@pytest.mark.parametrize(
+    "raw_error",
+    [
+        "{not-json",
+        json.dumps(
+            {
+                "success": False,
+                "data": {"code": 15, "message": "secret-token" * 500},
+            }
+        ),
+    ],
+)
+def test_403_malformed_or_oversized_body_is_generic(
+    raw_error, respx_mock, client_factory, tmp_path
+):
+    respx_mock.get(url__regex=rf"{HOST}/api/v1/records/7").respond(
+        403, text=raw_error, headers={"X-Debug": "PRIVATE-PERSON"}
+    )
+    respx_mock.route(host="yclients.invalid").respond(403)
+
+    report = _run(client_factory(sleep=AsyncMock()), tmp_path)
+    records = next(r for r in report["operations"] if r["operation_id"] == "records.list")
+
+    assert records["attempts"][0]["category"] == "http_403"
+    assert "secret-token" not in json.dumps(report)
+    assert "PRIVATE-PERSON" not in json.dumps(report)
+
+
+def test_401_with_403_error_envelope_stays_401(respx_mock, client_factory, tmp_path):
+    respx_mock.get(url__regex=rf"{HOST}/api/v1/records/7").respond(
+        401, json={"success": False, "data": {"code": 15, "message": "secret-token"}}
+    )
+    respx_mock.route(host="yclients.invalid").respond(403)
+
+    report = _run(client_factory(sleep=AsyncMock()), tmp_path)
+    records = next(r for r in report["operations"] if r["operation_id"] == "records.list")
+    assert records["attempts"][0]["category"] == "http_401"
