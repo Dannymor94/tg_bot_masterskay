@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "push_task_branch.sh"
 REAL_GIT = shutil.which("git")
 
