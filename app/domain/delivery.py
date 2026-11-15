@@ -17,6 +17,8 @@ INTERACTIVE_REPLY_KINDS = frozenset(
         "question.ack",
         "task.reply",
         "task.reply_help",
+        "task.queue_empty",
+        "task.card.query",
         "broadcast.preview",
         "broadcast.preview.photo",
         "broadcast.subscribed",
