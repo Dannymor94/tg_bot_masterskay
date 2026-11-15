@@ -407,10 +407,12 @@ def make_update(actor, text=None, *, callback=None, chat=None, kind="private"):
     return Update(update_id=10, message=message)
 
 
-def test_broadcast_transport_identity_and_callback_scope(caplog):
+def test_broadcast_transport_identity_and_callback_scope(caplog, monkeypatch):
     async def scenario():
         service = AsyncMock(spec=BroadcastService)
         bot = Bot("123:synthetic")
+        ack = AsyncMock(return_value=True)
+        monkeypatch.setattr(bot, "answer_callback_query", ack)
         dispatcher = Dispatcher()
         dispatcher.include_router(build_router(service, lambda: NOW))
         try:
@@ -436,6 +438,7 @@ def test_broadcast_transport_identity_and_callback_scope(caplog):
             await dispatcher.feed_update(bot, make_update(2, callback="bc:off:7"))
             service.confirm.assert_awaited_once_with(2, 7, NOW)
             service.unsubscribe.assert_awaited_once_with(2, NOW, broadcast_id=7)
+            assert ack.await_count == 5
             service.create.side_effect = RuntimeError("PRIVATE_BROADCAST")
             await dispatcher.feed_update(
                 bot, make_update(2, "/announce clients_all PRIVATE_BROADCAST")

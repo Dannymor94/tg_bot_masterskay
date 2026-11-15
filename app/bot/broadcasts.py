@@ -4,10 +4,11 @@ import logging
 from collections.abc import Callable
 from datetime import datetime
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, Message
 
+from app.bot.callback_ack import acknowledge
 from app.services.access import AccessDenied
 from app.services.broadcasts import BroadcastService
 
@@ -55,7 +56,8 @@ def build_router(service: BroadcastService, clock: Callable[[], datetime]) -> Ro
             logger.error("Broadcast command failed actor=%s", actor.id)
 
     @router.callback_query(F.data.startswith("bc:"))
-    async def callback(query: CallbackQuery) -> None:
+    async def callback(query: CallbackQuery, bot: Bot) -> None:
+        await acknowledge(query, bot)
         actor, message = query.from_user, query.message
         if actor.is_bot or not isinstance(message, Message) or not private(message, actor.id):
             return

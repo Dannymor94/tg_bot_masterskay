@@ -24,12 +24,14 @@ def message(chat=2, actor=2, kind="private", bot=False, **kwargs):
     )
 
 
-def test_transport_identity_and_safe_errors(caplog):
+def test_transport_identity_and_safe_errors(caplog, monkeypatch):
     async def scenario():
         service = AsyncMock(spec=ClientService)
         dispatcher = Dispatcher()
         dispatcher.include_router(build_router(service, lambda: NOW))
         bot = Bot("123:synthetic")
+        ack = AsyncMock(return_value=True)
+        monkeypatch.setattr(bot, "answer_callback_query", ack)
         try:
             for msg in [
                 message(chat=3, text="/start src_test"),
@@ -96,6 +98,7 @@ def test_transport_identity_and_safe_errors(caplog):
                 )
             service.retry.assert_awaited_once_with(2, 1, "cl:retry:1", NOW)
             assert service.choice.await_count == 3
+            assert ack.await_count == 6
             assert "+79000000001" not in caplog.text
             assert "RuntimeError" not in caplog.text
         finally:
