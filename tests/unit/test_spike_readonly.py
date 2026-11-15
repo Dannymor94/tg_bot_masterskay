@@ -120,15 +120,18 @@ def test_all_good_probes_write_shape_only_evidence_without_pii(
 
 
 def test_candidate_fallback_records_each_attempt(respx_mock, client_factory, tmp_path):
-    # staff.list: T-103 removed the 403 candidate; only /staff/{id} remains (index 0).
-    _ok(respx_mock.get(url__regex=rf"{HOST}/api/v1/staff/7"))
+    # services.list: candidate 0 (/company/{id}/services/) fails 404;
+    # spike falls through to candidate 1 (/services/{id}) which succeeds.
+    # This covers the genuine two-candidate fallback path required by Issue #64.
+    respx_mock.get(url__regex=rf"{HOST}/api/v1/company/7/services/").respond(404)
+    _ok(respx_mock.get(url__regex=rf"{HOST}/api/v1/services/7"))
     respx_mock.route(host="yclients.invalid").respond(500)  # everything else fails
 
     report = _run(client_factory(sleep=AsyncMock()), tmp_path)
-    staff = next(r for r in report["operations"] if r["operation_id"] == "staff.list")
-    assert staff["probed_ok"] is True
-    assert staff["proposed_candidate_index"] == 0
-    assert [a["category"] for a in staff["attempts"]] == ["ok"]
+    services = next(r for r in report["operations"] if r["operation_id"] == "services.list")
+    assert services["probed_ok"] is True
+    assert services["proposed_candidate_index"] == 1
+    assert [a["category"] for a in services["attempts"]] == ["http_404", "ok"]
 
 
 @pytest.mark.parametrize(
