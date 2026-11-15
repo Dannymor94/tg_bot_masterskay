@@ -1,7 +1,5 @@
 """Offline regression tests for the narrowly allowed task-branch push."""
 
-from __future__ import annotations
-
 import os
 import shutil
 import subprocess
