@@ -16,7 +16,7 @@
       "Bash(git reset --hard*)"
     ],
     "allow": [
-      "Bash(git push -u origin HEAD)"
+      "Bash(bash scripts/push_task_branch.sh)"
     ]
   }
 }
