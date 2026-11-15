@@ -136,11 +136,12 @@ def test_pending_blocked_before_http(respx_mock, client_factory):
 
 
 def test_pending_spike_selects_declared_candidate(respx_mock, client_factory):
+    # T-103 removed candidate 0 (/company/{id}/staff/ → 403); /staff/{id} is now index 0.
     route = respx_mock.get(HOST + "/api/v1/staff/7").respond(json={})
 
     async def scenario():
         async with client_factory(matrix=load_matrix(), allow_pending=True) as client:
-            await client.request("staff.list", candidate_index=1)
+            await client.request("staff.list", candidate_index=0)
 
     asyncio.run(scenario())
     assert route.call_count == 1

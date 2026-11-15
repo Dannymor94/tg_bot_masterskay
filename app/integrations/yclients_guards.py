@@ -12,12 +12,8 @@ from pydantic import JsonValue
 
 SAFE_READ_ROUTES: Mapping[str, frozenset[str]] = {
     "company.get": frozenset({"GET /api/v1/company/{company_id}"}),
-    "staff.list": frozenset(
-        {
-            "GET /api/v1/company/{company_id}/staff/",
-            "GET /api/v1/staff/{company_id}",
-        }
-    ),
+    # /company/{id}/staff/ returned HTTP 403 in owner spike (T-103); removed.
+    "staff.list": frozenset({"GET /api/v1/staff/{company_id}"}),
     "services.list": frozenset(
         {
             "GET /api/v1/company/{company_id}/services/",
