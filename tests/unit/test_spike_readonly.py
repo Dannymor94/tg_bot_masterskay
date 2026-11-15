@@ -16,10 +16,16 @@ import yaml
 from pydantic import SecretStr
 
 from app.integrations.yclients import YclientsClient
-from app.integrations.yclients_policy import API_MATRIX_PATH, AdapterError, load_matrix
+from app.integrations.yclients_policy import (
+    API_MATRIX_PATH,
+    AdapterError,
+    ApiMatrix,
+    OperationDenied,
+    load_matrix,
+)
 from app.settings import load_studio
 from scripts import spike_readonly
-from scripts.spike_readonly import main, run_spike
+from scripts.spike_readonly import _categorize, main, run_spike
 
 HOST = "https://yclients.invalid"
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -399,7 +405,13 @@ def test_401_with_403_error_envelope_stays_401(respx_mock, client_factory, tmp_p
 
 
 def test_t1_records_list_403_no_retry_one_http_call(respx_mock, client_factory, tmp_path):
-    """T1: records.list 403 → category "http_403", exactly 1 HTTP call (no retry on 4xx)."""
+    """T1: records.list 403 → category "http_403", exactly 1 HTTP call (no retry on 4xx).
+
+    Also verifies the adapter sends the full dual-token Authorization header
+    configured in API_MATRIX (Bearer {partner} + User {user}).
+    The header format is what the adapter sends; whether YCLIENTS accepts it
+    as valid auth is not asserted here — that requires a live probe.
+    """
     respx_mock.get(url__regex=rf"{HOST}/api/v1/records/7").respond(403)
     respx_mock.route(host="yclients.invalid").respond(200, json={})
 
@@ -412,24 +424,155 @@ def test_t1_records_list_403_no_retry_one_http_call(respx_mock, client_factory, 
     records_calls = [c for c in respx_mock.calls if "/api/v1/records/" in str(c.request.url)]
     assert len(records_calls) == 1  # 403 must not trigger retry
 
+    # Positive: dual-token header is present on the request.
+    auth = records_calls[0].request.headers.get("authorization", "")
+    assert "Bearer fake-partner" in auth
+    assert "User fake-user" in auth
 
-def test_t2_records_list_route_template_matches_safe_allowlist(client_factory):
-    """T2: the records.list candidate template in SAFE_READ_ROUTES matches what code uses."""
-    from app.integrations.yclients_guards import SAFE_READ_ROUTES
+    # Negative: Bearer-only Authorization (no User token) is a different adapter config.
+    # Construct a matrix that omits the User token from the header template and build
+    # the client directly (factory hardcodes the dual-token matrix).
+    base = load_matrix()
+    bearer_only_headers = dict(base.meta.headers_candidates)
+    bearer_only_headers["Authorization"] = "Bearer {partner_token}"
+    bearer_only_meta = base.meta.model_copy(update={"headers_candidates": bearer_only_headers})
+    bearer_only_matrix = base.model_copy(update={"meta": bearer_only_meta})
 
-    expected = (
-        "GET /api/v1/records/{company_id}?start_date={from}&end_date={to}&page={page}&count={count}"
-    )
-    assert expected in SAFE_READ_ROUTES["records.list"]
-
-
-def test_t3_records_list_422_differs_from_403(respx_mock, client_factory, tmp_path):
-    """T3: bad params (422) produce a different category than auth errors (403)."""
-    respx_mock.get(url__regex=rf"{HOST}/api/v1/records/7").respond(422)
+    respx_mock.reset()
+    respx_mock.get(url__regex=rf"{HOST}/api/v1/records/7").respond(403)
     respx_mock.route(host="yclients.invalid").respond(200, json={})
 
-    report = _run(client_factory(sleep=AsyncMock()), tmp_path)
+    bearer_only_client = YclientsClient(
+        base_url=HOST,
+        partner_token=SecretStr("fake-partner"),
+        user_token=SecretStr("fake-user"),
+        company_id=7,
+        policy=load_studio().yclients_http,
+        matrix=bearer_only_matrix,
+        allow_pending=True,
+        sleep=AsyncMock(),
+        now=lambda: NOW,
+    )
+    _run(bearer_only_client, tmp_path)
+    bearer_only_calls = [c for c in respx_mock.calls if "/api/v1/records/" in str(c.request.url)]
+    # Adapter sends only what the matrix header template specifies.
+    bearer_only_auth = bearer_only_calls[0].request.headers.get("authorization", "")
+    assert "Bearer fake-partner" in bearer_only_auth
+    assert "User fake-user" not in bearer_only_auth  # User token absent with bearer-only config
 
-    records_op = next(r for r in report["operations"] if r["operation_id"] == "records.list")
-    assert records_op["attempts"][0]["category"] == "http_422"
-    assert records_op["attempts"][0]["category"] != "http_403"
+
+def test_t2_records_list_route_template_reaches_http_and_removed_staff_route_blocked(
+    respx_mock, client_factory
+):
+    """T2: proper records.list template reaches HTTP with correct method+query;
+    removed /company/{id}/staff/ candidate raises OperationDenied before any HTTP call.
+    """
+    from app.integrations.yclients_guards import SAFE_READ_ROUTES
+
+    # Structural invariant: template in SAFE_READ_ROUTES matches the matrix candidate.
+    expected_template = (
+        "GET /api/v1/records/{company_id}?start_date={from}&end_date={to}&page={page}&count={count}"
+    )
+    assert expected_template in SAFE_READ_ROUTES["records.list"]
+
+    # Positive: allowed template reaches the network with correct method and query params.
+    route = respx_mock.get(url__regex=rf"{HOST}/api/v1/records/7").respond(403)
+
+    pending_client = YclientsClient(
+        base_url=HOST,
+        partner_token=SecretStr("fake-partner"),
+        user_token=SecretStr("fake-user"),
+        company_id=7,
+        policy=load_studio().yclients_http,
+        matrix=load_matrix(),
+        allow_pending=True,
+        now=lambda: NOW,
+    )
+
+    async def scenario_allowed():
+        async with pending_client as client:
+            try:
+                await client.request(
+                    "records.list",
+                    {"from": "2026-01-01", "to": "2026-01-02", "page": 1, "count": 200},
+                )
+            except AdapterError:
+                pass  # 403 expected; we only care that the HTTP call was made
+
+    asyncio.run(scenario_allowed())
+    assert route.call_count == 1
+    url_str = str(respx_mock.calls[0].request.url)
+    assert respx_mock.calls[0].request.method == "GET"
+    assert "/api/v1/records/7" in url_str
+    assert "start_date=2026-01-01" in url_str
+    assert "end_date=2026-01-02" in url_str
+    assert "page=1" in url_str
+    assert "count=200" in url_str
+
+    # Negative: removed staff route is blocked by SAFE_READ_ROUTES BEFORE any HTTP attempt.
+    # Insert the removed candidate back into the matrix to prove the guard is in the allowlist,
+    # not the matrix candidates list.
+    respx_mock.reset()
+    raw = load_matrix().model_dump(mode="json")
+    for op in raw["operations"]:
+        if op["id"] == "staff.list":
+            op["candidates"].insert(0, "GET /api/v1/company/{company_id}/staff/")
+            break
+    bad_matrix = ApiMatrix.model_validate(raw)
+
+    denied_client = YclientsClient(
+        base_url=HOST,
+        partner_token=SecretStr("fake-partner"),
+        user_token=SecretStr("fake-user"),
+        company_id=7,
+        policy=load_studio().yclients_http,
+        matrix=bad_matrix,
+        allow_pending=True,
+        now=lambda: NOW,
+    )
+
+    async def scenario_denied():
+        async with denied_client as client:
+            await client.request("staff.list", candidate_index=0)  # removed candidate
+
+    with pytest.raises(OperationDenied):
+        asyncio.run(scenario_denied())
+    assert not respx_mock.calls  # guard fires before any HTTP attempt
+
+
+def test_t3_records_list_422_differs_from_403(respx_mock, client_factory):
+    """T3: reversed date range (start > end) causes 422; status_code is distinct from 403.
+
+    Calls client.request() directly — not through run_spike — to isolate adapter behaviour
+    from spike orchestration.  Also verifies spike._categorize maps the error to "http_422".
+    """
+    respx_mock.get(url__regex=rf"{HOST}/api/v1/records/7").respond(422)
+
+    t3_client = YclientsClient(
+        base_url=HOST,
+        partner_token=SecretStr("fake-partner"),
+        user_token=SecretStr("fake-user"),
+        company_id=7,
+        policy=load_studio().yclients_http,
+        matrix=load_matrix(),
+        allow_pending=True,
+        now=lambda: NOW,
+    )
+
+    async def scenario():
+        async with t3_client as client:
+            await client.request(
+                "records.list",
+                # start_date > end_date: simulates a bad-param 422 from the server.
+                {"from": "2026-01-02", "to": "2026-01-01", "page": 1, "count": 200},
+            )
+
+    with pytest.raises(AdapterError) as exc_info:
+        asyncio.run(scenario())
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.status_code != 403  # separate from auth errors
+
+    # Spike-layer categorization must also distinguish 422 from 403.
+    assert _categorize(exc_info.value) == "http_422"
+    assert _categorize(exc_info.value) != "http_403"

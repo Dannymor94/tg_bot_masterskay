@@ -24,22 +24,25 @@ operations:
     evidence:
       spike_date: "2026-11-14"
       probe_ok_index: 0
-      http_status: 200
+      probe_outcome: ok        # 2xx received; exact HTTP status not separately recorded in spike report
       schema_verified: false   # schema/timezone field not confirmed; needs owner fixture
     fallback: таймзона из studio.yaml
 
   - id: staff.list
     kind: read
     purpose: Колонки залов и штатные преподаватели
-    # candidate 0 (GET /api/v1/company/{company_id}/staff/) returned HTTP 403 in owner spike;
-    # removed per T-103 evidence patch. Candidate 1 returned HTTP 200.
+    # Pending-only de-scope (T-103f): original candidate 0 (GET /api/v1/company/{company_id}/staff/)
+    # produced HTTP 403 in owner spike (2026-11-14) and was removed from the pending candidate set.
+    # Original candidate 1 (GET /api/v1/staff/{company_id}) produced probe ok.
+    # Neither result verifies schema or confirms the route is a valid managerial list endpoint.
     candidates: ["GET /api/v1/staff/{company_id}"]
     status: pending
     evidence:
       spike_date: "2026-11-14"
-      probe_ok_index: 0        # was index 1 before candidate 0 removed
-      http_status: 200
-      candidate_0_403: true    # /company/{id}/staff/ → 403; dropped
+      original_candidate_0: "GET /api/v1/company/{company_id}/staff/ → HTTP 403 (owner spike); removed from pending set"
+      original_candidate_1: "GET /api/v1/staff/{company_id} → probe ok (now index 0 after removal)"
+      probe_ok_index: 0        # was original index 1 before candidate 0 removed
+      probe_outcome: ok        # 2xx received; exact HTTP status not separately recorded in spike report
       schema_verified: false   # staff_id/hall columns not confirmed; needs owner fixture
     fallback: staff_id залов — по записям аренды; штатного преподавателя привязывают через R4
 
@@ -51,7 +54,7 @@ operations:
     evidence:
       spike_date: "2026-11-14"
       probe_ok_index: 0
-      http_status: 200
+      probe_outcome: ok        # 2xx received; exact HTTP status not separately recorded in spike report
       schema_verified: false   # service id/name/"Аренда" field not confirmed; needs owner fixture
     fallback: название услуги из записи
 
@@ -64,7 +67,7 @@ operations:
     evidence:
       spike_date: "2026-11-14"
       probe_ok_index: null
-      http_status: 403
+      http_status: 403         # exact status reported by owner; root cause unresolved
       schema_verified: false
       blocker: "HTTP 403 on all candidates; root cause unknown — see docs/reviews/T-103c-DIAGNOSIS.md (§A)"
     fallback: нет — базовая операция
@@ -88,7 +91,7 @@ operations:
     evidence:
       spike_date: "2026-11-14"
       probe_ok_index: 0
-      http_status: 200
+      probe_outcome: ok        # 2xx received; exact HTTP status not separately recorded in spike report
       schema_verified: false   # capacity/count/resource(hall) fields not confirmed; needs owner fixture
     fallback: занятия собираются из records.list по activity_id; без числа мест; зал — по соответствию service_id → hall из данных spike
 

@@ -12,7 +12,10 @@ from pydantic import JsonValue
 
 SAFE_READ_ROUTES: Mapping[str, frozenset[str]] = {
     "company.get": frozenset({"GET /api/v1/company/{company_id}"}),
-    # /company/{id}/staff/ returned HTTP 403 in owner spike (T-103); removed.
+    # Pending-only de-scope (T-103f): GET /api/v1/company/{company_id}/staff/ produced HTTP 403
+    # in the owner spike (2026-11-14) and was removed from the pending candidate set.
+    # This does NOT mark the route as permanently invalid or the remaining candidate as verified.
+    # Neither candidate is promoted; both remain status: pending until T-103 completes.
     "staff.list": frozenset({"GET /api/v1/staff/{company_id}"}),
     "services.list": frozenset(
         {
