@@ -13,12 +13,14 @@ from pydantic import SecretStr
 from app.bot.broadcasts import build_router as broadcast_router
 from app.bot.client import build_router as build_client_router
 from app.bot.questions import build_router as question_router
+from app.bot.rich_menu import build_router as rich_menu_router
 from app.bot.tasks import build_router as task_router
 from app.services.access import AccessDenied
 from app.services.broadcasts import BroadcastService
 from app.services.client_onboarding import ClientService
 from app.services.invites import InviteService
 from app.services.questions import QuestionService
+from app.services.rich_menu import RichMenuService
 from app.services.tasks import TaskService
 
 logger = logging.getLogger(__name__)
@@ -68,12 +70,19 @@ def build_router(service: InviteService, clock: Callable[[], datetime]) -> Route
 
 async def poll(bot: Bot, service: InviteService, stopped: asyncio.Event) -> None:
     dispatcher = Dispatcher()
+    task_service = TaskService(service.engine, service.owner_id, service.cfg)
+    broadcast_service = BroadcastService(service.engine, service.owner_id, service.cfg)
     dispatcher.include_router(build_router(service, lambda: datetime.now(UTC)))
     dispatcher.include_router(
-        task_router(
-            TaskService(service.engine, service.owner_id, service.cfg), lambda: datetime.now(UTC)
+        rich_menu_router(
+            RichMenuService(service.engine, service.owner_id, service.cfg),
+            task_service,
+            service,
+            broadcast_service,
+            lambda: datetime.now(UTC),
         )
     )
+    dispatcher.include_router(task_router(task_service, lambda: datetime.now(UTC)))
     dispatcher.include_router(
         build_client_router(
             ClientService(service.engine, service.owner_id, service.cfg), lambda: datetime.now(UTC)
@@ -87,7 +96,7 @@ async def poll(bot: Bot, service: InviteService, stopped: asyncio.Event) -> None
     )
     dispatcher.include_router(
         broadcast_router(
-            BroadcastService(service.engine, service.owner_id, service.cfg),
+            broadcast_service,
             lambda: datetime.now(UTC),
         )
     )

@@ -30,12 +30,15 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.db.models import kv, outbox
 from app.domain.delivery import INTERACTIVE_REPLY_KINDS, delivery_time, retry_time
+from app.domain.models import User
 from app.services.broadcast_delivery import finish_broadcast, render_news
 from app.services.invites import InviteTokens
+from app.services.rich_menu import render_menu_delivery
 from app.services.task_delivery import render_card
 from app.services.telegram_recipients import is_blocked, mark_blocked
 from app.settings import StudioConfig
 from app.texts import ru
+from app.ui.rich_menu import render as render_rich_menu
 
 Send = Callable[[Mapping[str, Any]], Awaitable[None]]
 COOLDOWN = "outbox:telegram_not_before"
@@ -47,6 +50,26 @@ class TelegramSender:
 
     async def __call__(self, row: Mapping[str, Any]) -> None:
         payload = row["payload_min"]
+        if row.get("kind") in ("ui.rich.new", "ui.rich.edit"):
+            actor = User(
+                telegram_user_id=row["telegram_user_id"],
+                role=payload["role"],
+                is_owner=payload["is_owner"],
+                news_opt_in=payload["news_opt_in"],
+            )
+            rich = render_rich_menu(actor, payload["screen"])
+            if row["kind"] == "ui.rich.edit":
+                await self.bot.edit_message_text(
+                    chat_id=actor.telegram_user_id,
+                    message_id=payload["message_id"],
+                    rich_message=rich,
+                )
+            else:
+                await self.bot.send_rich_message(
+                    chat_id=actor.telegram_user_id,
+                    rich_message=rich,
+                )
+            return
         if row.get("kind") == "rbac.invite":
             if self.tokens is None:
                 raise ValueError("invite token provider required")
@@ -155,6 +178,10 @@ async def send_one(
                 )
             elif row["kind"] == "broadcast.news" and not blocked:
                 rendered, skip_state = await render_news(
+                    connection, {str(key): value for key, value in row.items()}
+                )
+            elif row["kind"] in ("ui.rich.new", "ui.rich.edit") and not blocked:
+                rendered = await render_menu_delivery(
                     connection, {str(key): value for key, value in row.items()}
                 )
             if blocked:

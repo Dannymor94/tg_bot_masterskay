@@ -23,6 +23,8 @@ INTERACTIVE_REPLY_KINDS = frozenset(
         "broadcast.preview.photo",
         "broadcast.subscribed",
         "broadcast.unsubscribed",
+        "ui.rich.new",
+        "ui.rich.edit",
     }
 )
 
