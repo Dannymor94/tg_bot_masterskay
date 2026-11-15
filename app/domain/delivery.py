@@ -25,6 +25,8 @@ INTERACTIVE_REPLY_KINDS = frozenset(
         "broadcast.unsubscribed",
         "ui.rich.new",
         "ui.rich.edit",
+        "ui.compose.prompt",
+        "ui.compose.feedback",
     }
 )
 

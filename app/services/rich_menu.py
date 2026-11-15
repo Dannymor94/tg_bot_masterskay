@@ -10,6 +10,7 @@ from app.domain.models import OutboxDraft, User
 from app.domain.rbac import can
 from app.services.access import AccessDenied, AccessService
 from app.services.outbox import enqueue
+from app.services.rich_views import view_data
 from app.ui.rich_menu import can_open
 
 
@@ -81,5 +82,6 @@ async def render_menu_delivery(
             "role": actor.role,
             "is_owner": actor.is_owner,
             "news_opt_in": actor.news_opt_in,
+            "view_data": await view_data(db, actor, screen),
         },
     }

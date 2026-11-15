@@ -20,6 +20,8 @@ from app.services.broadcasts import BroadcastService
 from app.services.client_onboarding import ClientService
 from app.services.invites import InviteService
 from app.services.questions import QuestionService
+from app.services.rent_requests import RentRequestService
+from app.services.rich_compose import RichComposeService
 from app.services.rich_menu import RichMenuService
 from app.services.tasks import TaskService
 
@@ -79,6 +81,9 @@ async def poll(bot: Bot, service: InviteService, stopped: asyncio.Event) -> None
             task_service,
             service,
             broadcast_service,
+            QuestionService(service.engine, service.owner_id, service.cfg),
+            RentRequestService(service.engine, service.owner_id, service.cfg),
+            RichComposeService(service.engine, service.owner_id, service.cfg),
             lambda: datetime.now(UTC),
         )
     )

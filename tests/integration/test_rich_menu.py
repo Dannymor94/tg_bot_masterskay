@@ -15,6 +15,9 @@ from app.jobs.outbox import TelegramSender, send_one
 from app.services.access import AccessDenied
 from app.services.broadcasts import BroadcastService
 from app.services.invites import InviteService, InviteTokens
+from app.services.questions import QuestionService
+from app.services.rent_requests import RentRequestService
+from app.services.rich_compose import RichComposeService
 from app.services.rich_menu import RichMenuService
 from app.services.tasks import TaskService
 from app.settings import load_studio
@@ -118,7 +121,9 @@ def test_rich_sender_delivery_navigation_and_revoked_revalidation(task_db, monke
             )
             assert edit_rich.await_count == 1
             assert edit_rich.call_args.kwargs["message_id"] == 80
-            assert 'data="ui:queue"' in edit_rich.call_args.kwargs["rich_message"].html
+            html = edit_rich.call_args.kwargs["rich_message"].html
+            assert 'data="ui:tasks:done:0"' in html
+            assert "Задач в этом разделе нет" in html
 
             await service.show(4, "teacher", "home", night)
             async with engine.begin() as db:
@@ -156,6 +161,9 @@ def test_telegram_handler_ack_and_real_queue_callback(task_db, monkeypatch):
                 tasks,
                 InviteService(engine, 1, cfg, InviteTokens(SecretStr("synthetic"))),
                 BroadcastService(engine, 1, cfg),
+                QuestionService(engine, 1, cfg),
+                RentRequestService(engine, 1, cfg),
+                RichComposeService(engine, 1, cfg),
                 lambda: NOW,
             )
         )
