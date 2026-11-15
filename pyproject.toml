@@ -13,7 +13,6 @@ dev = ["ruff", "pyright", "pytest", "respx"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-extend-exclude = ["tg-bot-*", "t1*-*"]  # untracked QA/review worktree checkouts absent on CI
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC"]
