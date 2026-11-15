@@ -47,13 +47,15 @@ async def card(
     purpose: str,
     cfg: StudioConfig,
     now: datetime,
+    *,
+    interactive: bool = False,
 ) -> None:
     # Texts (especially the temporary R4 phone) are never copied to notifications.
     await enqueue(
         db,
         OutboxDraft(
             telegram_user_id=recipient,
-            kind="task.card",
+            kind="task.card.query" if interactive else "task.card",
             payload_min={"task_id": task_id},
             next_attempt_at=now,
             dedupe_key=task_key(task_id, recipient, purpose),
@@ -134,8 +136,29 @@ class TaskService(AccessService):
                     )
                 ).scalars()
             )
+            if not ids:
+                await enqueue(
+                    db,
+                    OutboxDraft(
+                        telegram_user_id=actor_id,
+                        kind="task.queue_empty",
+                        payload_min={"text": ru.TASK_QUEUE_EMPTY},
+                        next_attempt_at=now,
+                        dedupe_key=task_key("queue-empty", actor_id, request_id),
+                    ),
+                    self.cfg,
+                    now,
+                )
             for task_id in ids:
-                await card(db, task_id, actor_id, task_key("list", request_id), self.cfg, now)
+                await card(
+                    db,
+                    task_id,
+                    actor_id,
+                    task_key("list", request_id),
+                    self.cfg,
+                    now,
+                    interactive=True,
+                )
             return ids
 
     async def take(self, actor_id: int, task_id: int, now: datetime) -> bool:

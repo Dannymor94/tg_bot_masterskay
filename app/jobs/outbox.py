@@ -54,7 +54,7 @@ class TelegramSender:
             username = (await self.bot.me()).username
             payload = {"text": ru.INVITE_LINK.format(username=username, token=token)}
         markup = None
-        if row.get("kind") == "task.card":
+        if row.get("kind") in ("task.card", "task.card.query"):
             buttons = []
             task_id = payload["task_id"]
             if payload.get("retry"):
@@ -149,7 +149,7 @@ async def send_one(
             affected_broadcasts: set[int] = set()
             rendered = dict(row)
             skip_state = "cancelled"
-            if row["kind"] == "task.card" and not blocked:
+            if row["kind"] in ("task.card", "task.card.query") and not blocked:
                 rendered = await render_card(
                     connection, {str(key): value for key, value in row.items()}, cfg
                 )

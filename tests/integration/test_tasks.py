@@ -7,9 +7,11 @@ from sqlalchemy import select
 from app.db.engine import create_db
 from app.db.models import audit_log, outbox, tasks, users
 from app.domain.tasks import rule
+from app.jobs.outbox import send_one
 from app.services.access import AccessDenied
 from app.services.tasks import TaskService, create_task
 from app.settings import load_studio
+from app.texts import ru
 
 NOW = datetime(2026, 1, 1, 9, tzinfo=UTC)
 
@@ -24,6 +26,67 @@ async def seed(service):
                 for i, role in [(2, "admin"), (3, "client"), (4, "teacher")]
             ],
         )
+
+
+def test_empty_queue_acknowledges_at_night_without_duplicate(task_db):
+    night = datetime(2026, 11, 15, 19, 30, tzinfo=UTC)  # 22:30 Moscow
+
+    async def scenario():
+        engine = create_db(task_db)
+        service = TaskService(engine, 1, load_studio())
+        calls = []
+
+        async def send(row):
+            calls.append(row["payload_min"]["text"])
+
+        try:
+            await seed(service)
+            assert await service.queue(2, "message-17", night) == []
+            assert await service.queue(2, "message-17", night) == []
+            async with engine.connect() as db:
+                messages = (await db.execute(select(outbox))).mappings().all()
+            assert len(messages) == 1
+            assert messages[0]["kind"] == "task.queue_empty"
+            assert messages[0]["next_attempt_at"] == night
+            assert messages[0]["payload_min"] == {"text": ru.TASK_QUEUE_EMPTY}
+            assert await send_one(engine, send, service.cfg, night)
+            assert calls == [ru.TASK_QUEUE_EMPTY]
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_explicit_task_queue_cards_bypass_quiet_hours_but_push_cards_wait(task_db):
+    night = datetime(2026, 11, 15, 19, 30, tzinfo=UTC)  # 22:30 Moscow
+
+    async def scenario():
+        engine = create_db(task_db)
+        service = TaskService(engine, 1, load_studio())
+        delivered = []
+
+        async def send(row):
+            delivered.append(row)
+
+        try:
+            await seed(service)
+            task_id = await service.manual(1, "new", "synthetic", night)
+            assert await service.queue(2, "list-18", night) == [task_id]
+            async with engine.connect() as db:
+                queued = (await db.execute(select(outbox))).mappings().all()
+            push = [row for row in queued if row["kind"] == "task.card"]
+            requested = [row for row in queued if row["kind"] == "task.card.query"]
+            assert push and len(requested) == 1
+            assert all(row["next_attempt_at"] > night for row in push)
+            assert requested[0]["next_attempt_at"] == night
+            assert await send_one(engine, send, service.cfg, night)
+            assert delivered[0]["kind"] == "task.card.query"
+            assert delivered[0]["payload_min"]["task_id"] == task_id
+            assert not await send_one(engine, send, service.cfg, night)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
 
 
 def test_competing_takes_replays_and_ownership(task_db):
