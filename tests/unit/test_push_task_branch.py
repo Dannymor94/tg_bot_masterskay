@@ -36,9 +36,7 @@ def task_repo(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
     (repo / "README.md").write_text("test\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "seed")
-    _git(
-        repo, "remote", "add", "origin", "git@github.com:Dannymor94/tg_bot_masterskay.git"
-    )
+    _git(repo, "remote", "add", "origin", "git@github.com:Dannymor94/tg_bot_masterskay.git")
 
     fakebin = tmp_path / "fakebin"
     fakebin.mkdir()
@@ -58,9 +56,7 @@ def task_repo(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
     return repo, log, environment
 
 
-def _run(
-    repo: Path, environment: dict[str, str], *args: str
-) -> subprocess.CompletedProcess[str]:
+def _run(repo: Path, environment: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", str(SCRIPT), *args],
         cwd=repo,
@@ -105,6 +101,14 @@ def test_rejects_unapproved_remote(
     repo, log, environment = task_repo
     _git(repo, "switch", "-c", "t-123-sample")
     _git(repo, "remote", "set-url", "origin", "git@github.com:another/repo.git")
+    result = _run(repo, environment)
+    assert result.returncode == 2
+    assert not log.exists()
+
+
+def test_rejects_detached_head(task_repo: tuple[Path, Path, dict[str, str]]) -> None:
+    repo, log, environment = task_repo
+    _git(repo, "switch", "--detach", "HEAD")
     result = _run(repo, environment)
     assert result.returncode == 2
     assert not log.exists()
