@@ -2,10 +2,22 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.domain.delivery import delivery_time, retry_time
+from app.domain.delivery import INTERACTIVE_REPLY_KINDS, delivery_time, due_time, retry_time
 from app.settings import load_studio
 
 CFG = load_studio()
+
+
+@pytest.mark.parametrize("kind", sorted(INTERACTIVE_REPLY_KINDS))
+def test_interactive_reply_never_inherits_quiet_window(kind):
+    night = datetime(2026, 11, 15, 19, 15, tzinfo=UTC)
+    assert due_time(kind, night, CFG) == night
+
+
+@pytest.mark.parametrize("kind", ["broadcast.news", "announcement", "task.card"])
+def test_unsolicited_push_remains_deferred_until_morning(kind):
+    night = datetime(2026, 11, 15, 19, 15, tzinfo=UTC)
+    assert due_time(kind, night, CFG) == datetime(2026, 11, 16, 4, tzinfo=UTC)
 
 
 @pytest.mark.parametrize(

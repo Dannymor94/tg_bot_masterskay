@@ -5,6 +5,25 @@ from zoneinfo import ZoneInfo
 
 from app.settings import StudioConfig
 
+# Replies to explicit user actions are not scheduled notifications. Quiet hours
+# apply to pushes, including task cards and broadcasts, not to conversation UI.
+INTERACTIVE_REPLY_KINDS = frozenset(
+    {
+        "client.onboarding",
+        "rbac.menu",
+        "rbac.invite",
+        "rbac.accepted",
+        "rbac.revoked",
+        "question.ack",
+        "task.reply",
+        "task.reply_help",
+        "broadcast.preview",
+        "broadcast.preview.photo",
+        "broadcast.subscribed",
+        "broadcast.unsubscribed",
+    }
+)
+
 
 def delivery_time(now: datetime, cfg: StudioConfig) -> datetime:
     if now.utcoffset() is None:
@@ -17,6 +36,14 @@ def delivery_time(now: datetime, cfg: StudioConfig) -> datetime:
         return now.astimezone(UTC)
     day = local.date() + timedelta(days=int(start > end and clock >= start))
     return datetime.combine(day, end, local.tzinfo).astimezone(UTC)
+
+
+def due_time(kind: str, when: datetime, cfg: StudioConfig) -> datetime:
+    if kind in INTERACTIVE_REPLY_KINDS:
+        if when.utcoffset() is None:
+            raise ValueError("aware datetime required")
+        return when.astimezone(UTC)
+    return delivery_time(when, cfg)
 
 
 def retry_time(now: datetime, attempts: int, cfg: StudioConfig) -> datetime:
