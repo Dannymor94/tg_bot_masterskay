@@ -79,6 +79,7 @@ def test_all_good_probes_write_shape_only_evidence_without_pii(
         "/api/v1/company/7",
         "/api/v1/records/7",
         "/api/v1/activity/7",
+        "/api/v1/staff/7",  # staff.list candidate 0 after T-103 removed the 403 candidate
     ):
         _ok(respx_mock.get(url__regex=rf"{HOST}{prefix}"))
 
@@ -112,16 +113,15 @@ def test_all_good_probes_write_shape_only_evidence_without_pii(
 
 
 def test_candidate_fallback_records_each_attempt(respx_mock, client_factory, tmp_path):
-    # staff.list: first candidate 404, second candidate ok.
-    respx_mock.get(url__regex=rf"{HOST}/api/v1/company/7/staff").respond(404)
+    # staff.list: T-103 removed the 403 candidate; only /staff/{id} remains (index 0).
     _ok(respx_mock.get(url__regex=rf"{HOST}/api/v1/staff/7"))
     respx_mock.route(host="yclients.invalid").respond(500)  # everything else fails
 
     report = _run(client_factory(sleep=AsyncMock()), tmp_path)
     staff = next(r for r in report["operations"] if r["operation_id"] == "staff.list")
     assert staff["probed_ok"] is True
-    assert staff["proposed_candidate_index"] == 1
-    assert [a["category"] for a in staff["attempts"]] == ["http_404", "ok"]
+    assert staff["proposed_candidate_index"] == 0
+    assert [a["category"] for a in staff["attempts"]] == ["ok"]
 
 
 @pytest.mark.parametrize(
@@ -203,3 +203,43 @@ def test_authorized_non_tty_runs_without_prompt(monkeypatch):
     monkeypatch.setattr(spike_readonly, "_run_live", fake_run)
     monkeypatch.setattr(spike_readonly.sys.stdin, "isatty", lambda: False)
     assert main(["--authorize-live-read"]) == 0
+
+
+# T-103 synthetic regression tests (T1–T3 from docs/reviews/T-103c-DIAGNOSIS.md §B.1)
+
+
+def test_t1_records_list_403_no_retry_one_http_call(respx_mock, client_factory, tmp_path):
+    """T1: records.list 403 → category "http_403", exactly 1 HTTP call (no retry on 4xx)."""
+    respx_mock.get(url__regex=rf"{HOST}/api/v1/records/7").respond(403)
+    respx_mock.route(host="yclients.invalid").respond(200, json={})
+
+    report = _run(client_factory(sleep=AsyncMock()), tmp_path)
+
+    records_op = next(r for r in report["operations"] if r["operation_id"] == "records.list")
+    assert records_op["probed_ok"] is False
+    assert records_op["attempts"][0]["category"] == "http_403"
+
+    records_calls = [c for c in respx_mock.calls if "/api/v1/records/" in str(c.request.url)]
+    assert len(records_calls) == 1  # 403 must not trigger retry
+
+
+def test_t2_records_list_route_template_matches_safe_allowlist(client_factory):
+    """T2: the records.list candidate template in SAFE_READ_ROUTES matches what code uses."""
+    from app.integrations.yclients_guards import SAFE_READ_ROUTES
+
+    expected = (
+        "GET /api/v1/records/{company_id}?start_date={from}&end_date={to}&page={page}&count={count}"
+    )
+    assert expected in SAFE_READ_ROUTES["records.list"]
+
+
+def test_t3_records_list_422_differs_from_403(respx_mock, client_factory, tmp_path):
+    """T3: bad params (422) produce a different category than auth errors (403)."""
+    respx_mock.get(url__regex=rf"{HOST}/api/v1/records/7").respond(422)
+    respx_mock.route(host="yclients.invalid").respond(200, json={})
+
+    report = _run(client_factory(sleep=AsyncMock()), tmp_path)
+
+    records_op = next(r for r in report["operations"] if r["operation_id"] == "records.list")
+    assert records_op["attempts"][0]["category"] == "http_422"
+    assert records_op["attempts"][0]["category"] != "http_403"
