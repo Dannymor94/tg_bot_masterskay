@@ -13,16 +13,18 @@
 
 | Role | Responsibility |
 | --- | --- |
-| Executor — Claude Code (Sonnet 4.6) or assigned coding agent | Implement one eligible task in its own `t-XXX-...` branch and isolated worktree; test, commit, push, open/update PR, resolve feedback |
+| Executor — Claude Code (Sonnet 4.6) or assigned coding agent | Implement only its assigned task in its own `t-XXX-...` branch/worktree; test, commit, push, open/update PR, resolve feedback; do not duplicate a task already claimed by another executor |
 | Independent reviewer — a different agent/model | Review **HIGH-risk surfaces only** and material cross-PR integration risks, publish PASS / REQUEST_CHANGES / BLOCKED; remain read-only and independent of the author |
-| Coordinator/integrator — ChatGPT or designated integrator | Maintain dependencies/tracker, verify evidence and CI, route fixes/reviews, **automatically merge eligible PRs through GitHub** and continue to next task |
+| Senior developer + coordinator/integrator — ChatGPT | **Write code and tests directly** for eligible, unassigned and independently scoped tasks in its own branch; also maintain dependencies/tracker, verify evidence and CI, route other executors/reviews, **automatically merge eligible PRs through GitHub**, and continue to next task |
 | Owner | Supplies/rotates private credentials and external-account permissions, approves materially new product ADRs, initiates owner-only real-world actions not already covered by a scoped authorization |
+
+**Single-owner task claims (no duplicate work).** Before starting any code, check `PLAN.md`, open issues/PRs, known worktree/branch claims and the owner's latest handoff. A task the owner reports as already in progress with an agent stays with that agent **even if its branch/PR is not yet published**. ChatGPT must not duplicate, silently reassign, edit that agent's worktree or open a competing PR; choose a different safe, unclaimed task. If nothing independent is available, report the dependency instead of inventing work. ChatGPT may author and coordinate its own LOW/MEDIUM PRs, but must still perform a separate, evidence-based final diff/CI inspection; for HIGH, an **independent reviewer different from the author** remains mandatory. No code-authoring role changes the external owner gates or `docs/QA_POLICY.md`.
 
 **No recurring merge permission prompts.** The owner's standing authorization covers routine task branches, PRs, comments, retargeting, QA handoffs, status updates, merges and post-merge cleanup **subject to the gates in §3**. A GitHub branch-protection rule is never bypassed.
 
 ## 3. Autonomous task-to-merge loop
 
-1. Select the first unblocked `AGENT` task with completed dependencies. When waiting on a HUMAN/live dependency, select another independent eligible task; record the blocker, do not spin or ask repeatedly.
+1. Reconcile task ownership **before** selection, including owner-reported agent work not yet visible on GitHub. Select the first unblocked **unclaimed** `AGENT` task with completed dependencies. ChatGPT may implement it directly as senior developer or delegate it to Claude Code. When HUMAN/live work blocks progress, choose a different independent unclaimed task; otherwise record the blocker without duplicate implementation or repeated prompts.
 2. Create/use a dedicated `t-XXX-...` branch and worktree. Give a concise 3–5-line plan identifying touched files, tests and acceptance criteria; begin without waiting for approval. Split diffs above approximately 400 lines into traceable subtasks.
 3. Add or update regression tests, implement only scoped changes, run `uv sync --frozen && make check` and `git diff --check`. Do not weaken tests or CI to achieve green. If checks fail, fix them automatically and rerun.
 4. Update the relevant `PLAN.md` task status and, only with separately verified evidence, necessary matrix/config contracts. Commit `T-XXX: <description>` and ordinary `git push -u origin HEAD` **from the own task worktree only**. Open/update the PR; attach exact head/base SHAs, diff scope, test results and limitations. If push fails, report the actual blocker; never claim publication.
@@ -55,7 +57,7 @@ When such a gate is encountered, complete all safe preparatory work, document a 
 
 `make setup`, `make check`, `make test`, `make run`, `make migrate`, `make health`, `make spike-plan` (offline). **Owner-gated:** live `make spike`, `make invite`, production actions as described above.
 
-The dispatcher and Runner are **not deployed in this project** (ADR-23). Until an external orchestrator is actually connected, agents do not awaken themselves. The coordinator executes available GitHub steps during an active request, prepares precise English tasks for the independent executor/reviewer, and reports any actions that could not be performed. Do not claim 24/7 or background execution without a working automation.
+The dispatcher and Runner are **not deployed in this project** (ADR-23). Until an external orchestrator is actually connected, agents do not awaken themselves. ChatGPT is also the senior developer: during an active request it can implement safe, unclaimed code/tasks directly, execute available GitHub integration steps, delegate distinct tasks with precise English instructions, and report actions that could not be performed. An existing agent's in-flight assignment is never silently taken over. Do not claim 24/7 or background execution without a working automation.
 
 ## 7. Evidence and reporting
 
