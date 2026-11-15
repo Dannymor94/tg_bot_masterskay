@@ -201,6 +201,7 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr = Field(min_length=1)
     owner_telegram_id: Positive
     telegram_proxy_url: HttpUrl | None = None
+    miniapp_port: Annotated[int, Field(ge=1024, le=65535)] | None = None
 
     @field_validator("telegram_proxy_url", mode="before")
     @classmethod

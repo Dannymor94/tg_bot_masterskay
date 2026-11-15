@@ -33,6 +33,12 @@ async def run(settings: Settings, studio: StudioConfig) -> None:
             bot=bot,
             owner_id=settings.owner_telegram_id,
             tokens=tokens,
+            miniapp_port=settings.miniapp_port,
+            miniapp_bot_token=(
+                settings.telegram_bot_token.get_secret_value()
+                if settings.miniapp_port is not None
+                else None
+            ),
         )
 
 
