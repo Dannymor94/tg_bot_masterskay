@@ -89,7 +89,19 @@ def test_pushes_only_current_task_branch(
     _git(repo, "switch", "-c", branch)
     result = _run(repo, environment)
     assert result.returncode == 0, result.stderr
-    assert log.read_text(encoding="utf-8") == "push -u origin HEAD\n"
+    assert log.read_text(encoding="utf-8") == "push --no-follow-tags -u origin HEAD\n"
+
+
+def test_suppresses_implicit_tag_push(
+    task_repo: tuple[Path, Path, dict[str, str]],
+) -> None:
+    repo, log, environment = task_repo
+    _git(repo, "switch", "-c", "t-123-sample")
+    _git(repo, "config", "push.followTags", "true")
+    _git(repo, "tag", "-a", "v-test", "-m", "synthetic tag")
+    result = _run(repo, environment)
+    assert result.returncode == 0, result.stderr
+    assert log.read_text(encoding="utf-8") == "push --no-follow-tags -u origin HEAD\n"
 
 
 def test_rejects_unapproved_remote(
@@ -98,6 +110,25 @@ def test_rejects_unapproved_remote(
     repo, log, environment = task_repo
     _git(repo, "switch", "-c", "t-123-sample")
     _git(repo, "remote", "set-url", "origin", "git@github.com:another/repo.git")
+    result = _run(repo, environment)
+    assert result.returncode == 2
+    assert not log.exists()
+
+
+def test_rejects_multiple_push_urls(
+    task_repo: tuple[Path, Path, dict[str, str]],
+) -> None:
+    repo, log, environment = task_repo
+    _git(repo, "switch", "-c", "t-123-sample")
+    _git(
+        repo,
+        "remote",
+        "set-url",
+        "--push",
+        "origin",
+        "git@github.com:Dannymor94/tg_bot_masterskay.git",
+    )
+    _git(repo, "remote", "set-url", "--add", "--push", "origin", "git@github.com:another/repo.git")
     result = _run(repo, environment)
     assert result.returncode == 2
     assert not log.exists()
