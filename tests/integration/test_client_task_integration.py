@@ -227,10 +227,12 @@ def test_r4_notification_failure_rolls_back_shared_task_identity(task_db, monkey
     asyncio.run(scenario())
 
 
-def test_all_routers_invites_and_callbacks_use_authenticated_actor(task_db):
+def test_all_routers_invites_and_callbacks_use_authenticated_actor(task_db, monkeypatch):
     async def scenario():
         engine = create_db(task_db)
         bot = Bot("123:synthetic")
+        ack = AsyncMock(return_value=True)
+        monkeypatch.setattr(bot, "answer_callback_query", ack)
         try:
             clients, queue = await setup(engine)
             invites = InviteService(engine, 1, clients.cfg, InviteTokens(SecretStr("synthetic")))
@@ -311,6 +313,7 @@ def test_all_routers_invites_and_callbacks_use_authenticated_actor(task_db):
                 ),
             )
             assert [r for r in await rows(engine, tasks) if r["id"] == manual][0]["taken_by"] == 3
+            assert ack.await_count == 7
         finally:
             await bot.session.close()
             await engine.dispose()

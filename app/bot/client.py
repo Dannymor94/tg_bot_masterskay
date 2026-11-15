@@ -4,11 +4,12 @@ import logging
 from collections.abc import Callable
 from datetime import datetime
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import CommandObject, CommandStart
 from aiogram.types import CallbackQuery, Message
 from pydantic import SecretStr
 
+from app.bot.callback_ack import acknowledge
 from app.services.access import AccessDenied
 from app.services.client_onboarding import ClientService
 
@@ -57,7 +58,8 @@ def build_router(service: ClientService, clock: Callable[[], datetime]) -> Route
             logger.error("Client contact failed actor=%s", actor.id)
 
     @router.callback_query(F.data.startswith("cl:"))
-    async def choice(query: CallbackQuery) -> None:
+    async def choice(query: CallbackQuery, bot: Bot) -> None:
+        await acknowledge(query, bot)
         actor, message = query.from_user, query.message
         if actor.is_bot or not isinstance(message, Message) or not private_actor(message, actor.id):
             return

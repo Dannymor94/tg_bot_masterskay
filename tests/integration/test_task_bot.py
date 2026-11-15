@@ -35,7 +35,37 @@ def button(actor, action, task_id, seq, chat_id=None):
     )
 
 
-def test_commands_buttons_and_identity(task_db):
+def test_callback_ack_is_immediate_and_survives_network_failure(monkeypatch, caplog):
+    async def scenario():
+        service = AsyncMock(spec=TaskService)
+        bot = Bot("123:synthetic")
+        acknowledgement = AsyncMock(return_value=True)
+        monkeypatch.setattr(bot, "answer_callback_query", acknowledgement)
+        dispatcher = Dispatcher()
+        dispatcher.include_router(build_router(service, lambda: NOW))
+        try:
+
+            async def take(*args):
+                assert acknowledgement.await_count == 1
+
+            service.take.side_effect = take
+            await dispatcher.feed_update(bot, button(1, "take", 7, 31))
+            service.take.assert_awaited_once_with(1, 7, NOW)
+            acknowledgement.assert_awaited_once_with(callback_query_id="31")
+
+            acknowledgement.side_effect = RuntimeError("PRIVATE_TELEGRAM_ERROR")
+            service.take.reset_mock()
+            await dispatcher.feed_update(bot, button(1, "take", 8, 32))
+            service.take.assert_awaited_once_with(1, 8, NOW)
+            assert acknowledgement.await_count == 2
+            assert "PRIVATE_TELEGRAM_ERROR" not in caplog.text
+        finally:
+            await bot.session.close()
+
+    asyncio.run(scenario())
+
+
+def test_commands_buttons_and_identity(task_db, monkeypatch):
     async def scenario():
         engine = create_db(task_db)
         cfg = load_studio()
@@ -43,6 +73,8 @@ def test_commands_buttons_and_identity(task_db):
         dispatcher = Dispatcher()
         dispatcher.include_router(build_router(service, lambda: NOW))
         bot = Bot("123:synthetic")
+        ack = AsyncMock(return_value=True)
+        monkeypatch.setattr(bot, "answer_callback_query", ack)
         try:
             await seed(service)
             for request in [
@@ -83,6 +115,7 @@ def test_commands_buttons_and_identity(task_db):
                     .all()
                 )
                 assert len(replies) == 1 and replies[0]["telegram_user_id"] == 3
+            assert ack.await_count == 6
         finally:
             await bot.session.close()
             await engine.dispose()
