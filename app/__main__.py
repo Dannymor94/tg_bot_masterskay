@@ -9,12 +9,21 @@ from app.runtime import serve
 from app.services.invites import InviteTokens
 from app.settings import Settings, StudioConfig, load_settings, load_studio
 
+MIN_TELEGRAM_SESSION_TIMEOUT_SECONDS = 30
+
+
+def build_telegram_session(settings: Settings, studio: StudioConfig) -> AiohttpSession:
+    # The outbox has its own three-second asyncio.timeout while holding the SQLite
+    # write lock. The general HTTP session must also handle startup getMe and
+    # long-poll requests, which should not inherit that short delivery deadline.
+    return AiohttpSession(
+        proxy=str(settings.telegram_proxy_url) if settings.telegram_proxy_url else None,
+        timeout=max(MIN_TELEGRAM_SESSION_TIMEOUT_SECONDS, studio.delivery.request_timeout_seconds),
+    )
+
 
 async def run(settings: Settings, studio: StudioConfig) -> None:
-    session = AiohttpSession(
-        proxy=str(settings.telegram_proxy_url) if settings.telegram_proxy_url else None,
-        timeout=studio.delivery.request_timeout_seconds,
-    )
+    session = build_telegram_session(settings, studio)
     async with Bot(token=settings.telegram_bot_token.get_secret_value(), session=session) as bot:
         tokens = InviteTokens(settings.telegram_bot_token)
         await serve(
