@@ -136,11 +136,12 @@ def test_pending_blocked_before_http(respx_mock, client_factory):
 
 
 def test_pending_spike_selects_declared_candidate(respx_mock, client_factory):
+    # T-103 removed candidate 0 (/company/{id}/staff/ → 403); /staff/{id} is now index 0.
     route = respx_mock.get(HOST + "/api/v1/staff/7").respond(json={})
 
     async def scenario():
         async with client_factory(matrix=load_matrix(), allow_pending=True) as client:
-            await client.request("staff.list", candidate_index=1)
+            await client.request("staff.list", candidate_index=0)
 
     asyncio.run(scenario())
     assert route.call_count == 1
@@ -428,10 +429,15 @@ def test_later_page_failure_does_not_return_partial_success(respx_mock, client_f
 
 
 def test_verified_cannot_select_an_unverified_candidate(respx_mock, client_factory):
+    # services.list has two candidates; factory verifies only candidate 0 (path=candidates[0]).
+    # Confirm candidate 1 exists in the matrix — the test is only meaningful if the index is valid.
+    services_op = next(op for op in load_matrix().operations if op.id == "services.list")
+    assert len(services_op.candidates) >= 2, "services.list must have ≥2 candidates for this test"
+
     async def scenario():
         async with client_factory(allow_pending=True) as client:
             with pytest.raises(OperationDenied):
-                await client.request("staff.list", candidate_index=1)
+                await client.request("services.list", candidate_index=1)
 
     asyncio.run(scenario())
     assert not respx_mock.calls
