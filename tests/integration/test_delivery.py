@@ -52,6 +52,61 @@ async def rows(engine):
         return (await connection.execute(select(outbox).order_by(outbox.c.id))).mappings().all()
 
 
+@pytest.mark.parametrize("interactive_kind", ["client.onboarding", "rbac.menu"])
+def test_interactive_reply_is_delivered_during_quiet_hours(path, interactive_kind):
+    # 22:15 Moscow is inside the configured 22:00–07:00 quiet window.
+    night = datetime(2026, 11, 15, 19, 15, tzinfo=UTC)
+    next_morning = datetime(2026, 11, 16, 4, tzinfo=UTC)
+    calls = []
+
+    async def send(row):
+        calls.append(row["dedupe_key"])
+
+    async def scenario():
+        engine = create_db(path)
+        try:
+            await put(engine, draft("broadcast", kind="announcement"), night)
+            await put(engine, draft("reply", kind=interactive_kind), night)
+            pending = await rows(engine)
+            assert pending[0]["next_attempt_at"] == next_morning
+            assert pending[1]["next_attempt_at"] == night
+            assert await send_one(engine, send, CFG, night)
+            assert calls == ["reply"]
+            assert not await send_one(engine, send, CFG, night + timedelta(seconds=1))
+            assert (await rows(engine))[0]["state"] == "pending"
+            assert await send_one(engine, send, CFG, next_morning)
+            assert calls == ["reply", "broadcast"]
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_interactive_reply_still_respects_explicit_future_due_time(path):
+    night = datetime(2026, 11, 15, 19, 15, tzinfo=UTC)
+    future = night + timedelta(minutes=5)
+    calls = []
+
+    async def send(row):
+        calls.append(row["dedupe_key"])
+
+    async def scenario():
+        engine = create_db(path)
+        try:
+            item = draft("later", kind="client.onboarding").model_copy(
+                update={"next_attempt_at": future}
+            )
+            await put(engine, item, night)
+            assert (await rows(engine))[0]["next_attempt_at"] == future
+            assert not await send_one(engine, send, CFG, night)
+            assert await send_one(engine, send, CFG, future)
+            assert calls == ["later"]
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_restart_and_concurrent_senders(path):
     calls = []
 

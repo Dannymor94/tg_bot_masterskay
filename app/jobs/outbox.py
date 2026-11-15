@@ -29,7 +29,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.db.models import kv, outbox
-from app.domain.delivery import delivery_time, retry_time
+from app.domain.delivery import INTERACTIVE_REPLY_KINDS, delivery_time, retry_time
 from app.services.broadcast_delivery import finish_broadcast, render_news
 from app.services.invites import InviteTokens
 from app.services.task_delivery import render_card
@@ -116,8 +116,7 @@ async def send_one(
     clock: Callable[[], datetime] | None = None,
 ) -> bool:
     # Enqueue enforces quiet hours; retrying messages also wait through the night.
-    if delivery_time(now, cfg) > now:
-        return False
+    quiet = delivery_time(now, cfg) > now
     async with engine.connect() as connection:
         await connection.exec_driver_sql("BEGIN IMMEDIATE")
         try:
@@ -127,13 +126,15 @@ async def send_one(
             if cooldown and datetime.fromisoformat(cooldown) > now:
                 await connection.rollback()
                 return False
+            pending = select(outbox).where(
+                outbox.c.state == "pending", outbox.c.next_attempt_at <= now
+            )
+            if quiet:
+                pending = pending.where(outbox.c.kind.in_(sorted(INTERACTIVE_REPLY_KINDS)))
             row = (
                 (
                     await connection.execute(
-                        select(outbox)
-                        .where(outbox.c.state == "pending", outbox.c.next_attempt_at <= now)
-                        .order_by(outbox.c.next_attempt_at, outbox.c.id)
-                        .limit(1)
+                        pending.order_by(outbox.c.next_attempt_at, outbox.c.id).limit(1)
                     )
                 )
                 .mappings()

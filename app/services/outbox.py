@@ -7,7 +7,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db.models import outbox, users
-from app.domain.delivery import delivery_time
+from app.domain.delivery import delivery_time, due_time
 from app.domain.models import OutboxDraft
 from app.services.telegram_recipients import is_blocked
 from app.settings import StudioConfig
@@ -16,7 +16,7 @@ from app.settings import StudioConfig
 async def enqueue(
     connection: AsyncConnection, draft: OutboxDraft, cfg: StudioConfig, now: datetime
 ) -> bool:
-    allowed = delivery_time(max(now, draft.next_attempt_at), cfg)
+    allowed = due_time(draft.kind, max(now, draft.next_attempt_at), cfg)
     result = await connection.execute(
         insert(outbox)
         .values(**draft.model_dump(exclude={"next_attempt_at"}), next_attempt_at=allowed)
