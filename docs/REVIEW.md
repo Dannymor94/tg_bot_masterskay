@@ -1,44 +1,58 @@
-# REVIEW — independent acceptance and integration checklist
+# REVIEW — selective independent QA and security checklist
 
-**Applies to:** every `[R]` task, any security/privacy/auth/API/sync or safety-gate change, any new head/base pair whose previous sign-off is invalid, and one independent review of accumulated ordinary tasks at the end of each stage. The reviewer must be different from the author and **read-only**. Follow `AGENTS.md` and ADR-24.
+**Authoritative decision table:** `docs/QA_POLICY.md` (ADR-25). The old rule to launch independent QA for every `[R]` label, new SHA, retarget or stage boundary is **superseded**. Required GitHub CI and coordinator scope review apply to **every PR**. Independent QA is for **HIGH risk or material cross-PR interaction risk**, not a routine checkpoint. The reviewer must be different from the author and **read-only**.
 
-## Evidence first
+## 1. Selective review
 
-- [ ] Confirm exact repository, HEAD SHA, BASE SHA, task requirements and complete diff; do not trust the author's report alone.
-- [ ] Reproduce `uv sync --frozen && make check` on Python 3.12 in a clean isolated worktree; capture Ruff/Pyright/pytest results and `git diff --check`.
-- [ ] Verify touched files, dependencies, acceptance criteria, tests and no out-of-scope feature expansion.
-- [ ] For a retarget/rebase or moved main, compare the full new base-to-head patch against previously approved evidence. Filename counts alone are insufficient. Require a new explicit verdict on the current head/base pair.
-- [ ] Inspect safe handling of exceptions/logs, known parsing bounds and error cases; no secret or PII leaks.
+| Classification | Independent QA | Acceptance |
+| --- | --- | --- |
+| LOW: docs, plan, additive synthetic tests with unchanged runtime, CI and safety assertions | **Not required** | Current-head CI green + coordinator full effective diff check |
+| MEDIUM: routine bounded non-sensitive code | **Not required by default** | Current-head CI + coordinator acceptance and targeted tests |
+| HIGH: YCLIENTS API/policy/probe, auth/PII/secrets, real message recipients, sync/outbox races, money-like effects, migrations, CI/deny/security control, **QA gate weakening** | **Required** on affected risk surface | CI + independent focused PASS / REQUEST_CHANGES / BLOCKED with no unresolved BLOCKER/MAJOR |
 
-## YCLIENTS
+On HIGH `REQUEST_CHANGES`, the reviewer **must** verify the original failing invariant and affected risk surface after the fix. On changed HEAD/BASE, first perform a coordinator impact analysis of the full effective patch, dependencies and CI. A material HIGH change needs targeted delta review; otherwise reuse valid prior risk evidence without a new full review. The `[R]` marker in the historical PLAN is only advisory.
 
-- [ ] Only code-reviewed `kind: read` routes from `SAFE_READ_ROUTES`; normal runtime requires `verified`. Only an owner-authorized `make spike` may inspect reviewed pending read candidates.
-- [ ] API routes and schema derive from `API_MATRIX.yaml` plus independently verified sanitized fixtures. 200 or error code 15 alone proves neither data semantics nor permission cause.
-- [ ] Fixtures and reports contain no client names, phones, tokens, headers, raw bodies, free-text error messages or unapproved identifiers.
-- [ ] Unknown/unavailable operations use documented fallback; no silent promotion to `verified`.
+A successful, verifiable final-head CI run can supply Ruff/Pyright/pytest results. Independent reviewers should prioritize targeted adversarial/negative checks; **do not run a second complete test suite by default** or claim that reused CI was independently executed.
 
-## Authorization, privacy and reliability
+## 2. Universal coordinator gate (every PR)
 
-- [ ] No real secrets in code/tests/logs. No YCLIENTS names/phones persisted except the temporary own-contact R4 exception per ADR-06.
-- [ ] `can()` is enforced in each service action, including callbacks; clients/teachers cannot access someone else's records or phones. Contact binding accepts only the requesting user's own contact.
-- [ ] News require `news_opt_in`; service notices go only to relevant participants, and unsubscribe is available.
-- [ ] Deterministic domain functions, tabular tests, injected time, UNIQUE effect keys, Telegram only via outbox, UTC persistence / `Europe/Moscow` domain.
-- [ ] Replay and restart do not duplicate tasks/messages; test races, Telegram 429, blocked bot, cancellation after reminder, blank/partial API responses and rollback.
-- [ ] “Cannot come” creates R2, never writes to YCLIENTS. Room occupancy combines room-column records and group activities with that room resource.
-- [ ] No change to deny rules, permissions, secret handling, production behavior or ADR without corresponding authorization and evidence.
+- [ ] Classify highest applicable **LOW / MEDIUM / HIGH** risk by actual behavior, not just labels, branch name or files.
+- [ ] Examine full effective current HEAD-to-BASE patch, scope, acceptance criteria, conflicts, changed upstream dependencies and previous findings.
+- [ ] Verify required final-head/merge CI: `uv sync --frozen && make check`, Python 3.12, Ruff, Pyright and pytest. Check `git diff --check` where available.
+- [ ] Check no leak of secrets/PII, no unapproved real-world actions, new YCLIENTS routes, disablement of safety assertions, permission/CI controls, or scope creep.
+- [ ] Ensure no unresolved BLOCKER/MAJOR; verify any prior independent risk finding has been explicitly closed by evidence.
+- [ ] Confirm GitHub branch protection and mergeability; coordinator merges only with exact `expected_head_sha`.
 
-## Verdict and automatic integration
+## 3. Focused HIGH-risk checks (apply only if affected)
 
-`BLOCKER`: secrets/PII, unauthorized real action, unverified API, unsafe write, broken acceptance. `MAJOR`: logic/reliability error or missing critical test. `MINOR` and `NIT` are nonblocking only when explicitly classified as such.
+### YCLIENTS / external API
+- [ ] API operations remain code-review allowlisted `kind: read`; normal runtime uses only independently validated `verified` operations. Pending candidates are restricted to authorized owner-only spike.
+- [ ] Check type coercion, parsed YAML/JSON response validation **before** any HTTP/evidence, date ranges, pagination bounds, retries, status handling and malformed/oversized responses.
+- [ ] Neither HTTP 200 nor a diagnostic error code proves correct branch, access rights or external schema. Sanitized evidence must be independently checked before any verified promotion.
+- [ ] No raw response, token, client name, phone, headers or dynamic untrusted string leaks into logs/fixtures.
+
+### Authorization / privacy / delivery
+- [ ] `can()` in every sensitive service action and callback; permissions checked at effect time, not only preview. Contact binding accepts only own contact.
+- [ ] News require `news_opt_in`; service notifications only to verified relevant participants; opt-out and late changes fail closed.
+- [ ] Time and transaction semantics deterministic; UTC storage / `Europe/Moscow` domain. UNIQUE effect keys and outbox enforce idempotency; concurrent workers and retries cannot duplicate.
+- [ ] Sensitive migrations and transactional writes survive crashes/replays; no new external writes or unapproved customer-facing operation.
+
+### Security controls / governance
+- [ ] No weakening of deny rules, branch protections, required CI, secret exclusion, safe routing, or independent HIGH risk review without an owner-approved ADR.
+- [ ] For a **governance policy that reduces QA frequency**, an independent focused policy audit is required at initial adoption; subsequent LOW/MEDIUM changes use the adopted policy.
+
+## 4. Report and integration
 
 ```text
 T-XXX — PASS | REQUEST_CHANGES | BLOCKED
-Reviewed HEAD:
-Reviewed BASE:
-Independent checks:
-Findings: [severity] path:line — evidence → required fix
-Scope/limits:
-Recommended next step:
+Risk surface reviewed:
+HEAD and BASE / effective patch:
+Verified CI (reused; not independently rerun):
+Independent targeted checks actually run:
+Findings [BLOCKER/MAJOR/MINOR/NIT, path:line, evidence]:
+Prior findings closed:
+Remaining external gates:
+Merge eligibility:
 ```
 
-BLOCKER/MAJOR => REQUEST_CHANGES; missing evidence => BLOCKED. A current independent PASS, clean PR and required green CI make an in-scope change **eligible for autonomous coordinator merge**, without a separate owner request. Reviewer does not merge or edit the code. **Code merge never authorizes a live YCLIENTS probe, production release or customer-facing action.**
+BLOCKER/MAJOR -> REQUEST_CHANGES. Missing evidence -> BLOCKED. Low and medium PRs have **no independent report requirement**; record `QA: NOT_REQUIRED` with reason in the PR risk record. For HIGH, after a focused independent PASS and required green CI, the coordinator may automatically merge without asking the owner. A code merge never authorizes live YCLIENTS, real messages or production deployment.
