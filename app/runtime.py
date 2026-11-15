@@ -14,6 +14,7 @@ from app.db.engine import DB_PATH, create_db
 from app.db.models import kv
 from app.jobs.outbox import Send
 from app.jobs.runner import run_jobs
+from app.miniapp.server import serve_http
 from app.services.invites import InviteService, InviteTokens
 from app.settings import StudioConfig
 
@@ -42,6 +43,8 @@ async def serve(
     bot: Bot | None = None,
     owner_id: int | None = None,
     tokens: InviteTokens | None = None,
+    miniapp_port: int | None = None,
+    miniapp_bot_token: str | None = None,
 ) -> None:
     await asyncio.to_thread(migrate, path)
     engine = create_db(path)
@@ -57,6 +60,12 @@ async def serve(
             access = InviteService(engine, owner_id, cfg, tokens)
             await access.bootstrap(datetime.now(UTC))
         async with asyncio.TaskGroup() as group:
+            if miniapp_port is not None:
+                if cfg is None or owner_id is None or not miniapp_bot_token:
+                    raise ValueError("Mini App configuration required")
+                group.create_task(
+                    serve_http(engine, cfg, owner_id, miniapp_bot_token, miniapp_port, stopped)
+                )
             if bot is not None and access is not None:
                 group.create_task(poll(bot, access, stopped))
             if send is not None and cfg is not None:

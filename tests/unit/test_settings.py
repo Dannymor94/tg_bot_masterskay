@@ -31,7 +31,9 @@ def test_settings_from_external_file(tmp_path, credentials, monkeypatch):
     assert "dummy-partner" not in repr(settings)
 
 
-@pytest.mark.parametrize("variable", list(Settings.model_fields)[:-1])
+@pytest.mark.parametrize(
+    "variable", [name for name, field in Settings.model_fields.items() if field.is_required()]
+)
 def test_missing_variable(tmp_path, credentials, monkeypatch, variable):
     credentials.pop(variable.upper())
     for name, value in credentials.items():
@@ -75,6 +77,17 @@ def test_optional_proxy_empty(tmp_path, credentials, monkeypatch):
         monkeypatch.setenv(name, value)
     monkeypatch.setenv("TELEGRAM_PROXY_URL", "")
     assert load_settings(tmp_path / "absent").telegram_proxy_url is None
+
+
+def test_miniapp_port_opt_in_and_bounds(tmp_path, credentials, monkeypatch):
+    for name, value in credentials.items():
+        monkeypatch.setenv(name, value)
+    assert load_settings(tmp_path / "absent").miniapp_port is None
+    monkeypatch.setenv("MINIAPP_PORT", "8080")
+    assert load_settings(tmp_path / "absent").miniapp_port == 8080
+    monkeypatch.setenv("MINIAPP_PORT", "80")
+    with pytest.raises(ValueError, match="MINIAPP_PORT"):
+        load_settings(tmp_path / "absent")
 
 
 def test_combined_t102_t105_config():
