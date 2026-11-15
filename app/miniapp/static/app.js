@@ -141,12 +141,20 @@
     if (task.body && task.body !== title) card.append(element("p", "", task.body));
     const bottom = element("div", "card-bottom");
     bottom.append(element("span", "due", displayDate(task.due_at)));
-    if (task.state === "open" || task.state === "taken") {
+    const isOwner = state.user && state.user.is_owner;
+    const isAssignee = state.user && Number(task.taken_by) === Number(state.user.user_id);
+    const canTake = task.state === "open" && task.code !== "R4";
+    const canFinish = task.state === "taken" && task.code !== "R3" && (isAssignee || isOwner);
+    if (canTake || canFinish) {
       const action = task.state === "open" ? "take" : "done";
       const label = task.state === "open" ? "Взять →" : "Завершить ✓";
       const button = makeButton(label, "primary task-action", () => changeTask(task.id, action));
       button.disabled = state.busy;
       bottom.append(button);
+    } else if (task.code === "R4" && task.state === "open") {
+      bottom.append(element("span", "due", "Привязка клиента — через Telegram"));
+    } else if (task.code === "R3" && task.state === "taken" && (isAssignee || isOwner)) {
+      bottom.append(element("span", "due", `Ответить в боте: /reply ${task.id} текст`));
     }
     card.append(bottom);
     return card;
@@ -245,7 +253,12 @@
     state.busy = true;
     renderTasks();
     try {
-      await request(`/tasks/${encodeURIComponent(id)}/${action}`, { method: "POST" });
+      const result = await request(`/tasks/${encodeURIComponent(id)}/${action}`, { method: "POST" });
+      if (result.ok !== true) {
+        await loadTasks();
+        announce("Задача уже изменилась или недоступна. Список обновлён.", true);
+        return;
+      }
       await loadTasks();
       notify(action === "take" ? "Задача взята в работу" : "Задача завершена");
     } catch (error) {
