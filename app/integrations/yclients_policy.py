@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError, model_validator
 
 from app.integrations.yclients_guards import safe_read_route, sanitize_diagnostic
 from app.texts import ru
@@ -46,7 +46,10 @@ class Operation(BaseModel):
 class MatrixMeta(BaseModel):
     model_config = ConfigDict(frozen=True)
     headers_candidates: dict[str, str] = {}
-    page_size: int | None = None
+    # Reject YAML booleans and numeric strings before Pydantic coerces them to int.
+    # A missing/null size remains supported by the matrix model, but the spike
+    # refuses to make even the first request until a positive size is supplied.
+    page_size: int | None = Field(default=None, strict=True, gt=0)
 
 
 class ApiMatrix(BaseModel):
