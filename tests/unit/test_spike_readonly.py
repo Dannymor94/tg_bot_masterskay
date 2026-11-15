@@ -12,10 +12,11 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+import yaml
 from pydantic import SecretStr
 
 from app.integrations.yclients import YclientsClient
-from app.integrations.yclients_policy import AdapterError, load_matrix
+from app.integrations.yclients_policy import API_MATRIX_PATH, AdapterError, load_matrix
 from app.settings import load_studio
 from scripts import spike_readonly
 from scripts.spike_readonly import main, run_spike
@@ -173,6 +174,117 @@ def test_phone_search_probes_privately_without_leaking(respx_mock, client_factor
         assert "+7-999-123-45-67" not in f.read_text()
     post = next(c.request for c in respx_mock.calls if c.request.method == "POST")
     assert "+7-999-123-45-67" in post.content.decode()  # proves it reached the wire, not our output
+
+
+@pytest.mark.parametrize("page_size", [None, 0, -1, False, True])
+def test_invalid_page_size_blocks_before_http_or_evidence(
+    page_size, respx_mock, client_factory, tmp_path
+):
+    base = load_matrix()
+    matrix = base.model_copy(update={"meta": base.meta.model_copy(update={"page_size": page_size})})
+    respx_mock.route(host="yclients.invalid").respond(200, json={"data": []})
+
+    async def scenario():
+        async with client_factory(sleep=AsyncMock()) as client:
+            return await run_spike(client=client, matrix=matrix, output_dir=tmp_path, now=NOW)
+
+    with pytest.raises(AdapterError) as error:
+        asyncio.run(scenario())
+
+    assert "secret-token" not in str(error.value)
+    assert not respx_mock.calls
+    assert not list(tmp_path.iterdir())
+
+
+def test_valid_page_size_reaches_records_list_unchanged(respx_mock, client_factory, tmp_path):
+    base = load_matrix()
+    matrix = base.model_copy(update={"meta": base.meta.model_copy(update={"page_size": 23})})
+    respx_mock.route(host="yclients.invalid").respond(403)
+
+    async def scenario():
+        async with client_factory(sleep=AsyncMock()) as client:
+            return await run_spike(client=client, matrix=matrix, output_dir=tmp_path, now=NOW)
+
+    report = asyncio.run(scenario())
+    record_requests = [
+        call.request for call in respx_mock.calls if "/api/v1/records/7" in str(call.request.url)
+    ]
+
+    assert len(record_requests) == 1
+    assert record_requests[0].url.params["count"] == "23"
+    assert record_requests[0].url.params["page"] == "1"
+    records = next(r for r in report["operations"] if r["operation_id"] == "records.list")
+    assert records["attempts"][0]["category"] == "http_403"
+    assert records["probed_ok"] is False
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize(
+    ("configured_size", "expected_count"),
+    [
+        pytest.param(True, None, id="yaml-true"),
+        pytest.param(False, None, id="yaml-false"),
+        pytest.param(None, None, id="yaml-null"),
+        pytest.param("missing-key", None, id="yaml-missing"),
+        pytest.param(0, None, id="yaml-zero"),
+        pytest.param(-1, None, id="yaml-negative"),
+        pytest.param(-99, None, id="yaml-negative-large"),
+        pytest.param("1", None, id="yaml-numeric-string"),
+        pytest.param(1.0, None, id="yaml-float"),
+        pytest.param(1, 1, id="yaml-one"),
+        pytest.param(23, 23, id="yaml-twenty-three"),
+        pytest.param(200, 200, id="yaml-default"),
+    ],
+)
+def test_page_size_via_real_yaml_loader_fails_closed(
+    configured_size, expected_count, respx_mock, client_factory, tmp_path, capsys
+):
+    """The file loader must not coerce YAML booleans into valid page sizes."""
+    raw = yaml.safe_load(API_MATRIX_PATH.read_text(encoding="utf-8"))
+    if configured_size == "missing-key":
+        raw["meta"].pop("page_size")
+    else:
+        raw["meta"]["page_size"] = configured_size
+    matrix_path = tmp_path / "matrix.yaml"
+    matrix_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    evidence_dir = tmp_path / "evidence"
+    respx_mock.route(host="yclients.invalid").respond(403)
+
+    try:
+        matrix = load_matrix(matrix_path)
+    except AdapterError as error:
+        assert expected_count is None
+        assert not any(secret in str(error) for secret in PII)
+    else:
+
+        async def scenario():
+            async with client_factory(sleep=AsyncMock()) as client:
+                return await run_spike(
+                    client=client, matrix=matrix, output_dir=evidence_dir, now=NOW
+                )
+
+        if expected_count is None:
+            with pytest.raises(AdapterError) as error:
+                asyncio.run(scenario())
+            assert not any(secret in str(error.value) for secret in PII)
+        else:
+            report = asyncio.run(scenario())
+            assert report["requests_made"] > 0
+            record_calls = [
+                call.request
+                for call in respx_mock.calls
+                if "/api/v1/records/7" in str(call.request.url)
+            ]
+            assert len(record_calls) == 1
+            assert record_calls[0].url.params["count"] == str(expected_count)
+            assert record_calls[0].url.params["page"] == "1"
+
+    if expected_count is None:
+        assert not respx_mock.calls
+    assert not evidence_dir.exists()
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == ""
 
 
 def test_request_budget_fails_closed(respx_mock, client_factory, tmp_path):

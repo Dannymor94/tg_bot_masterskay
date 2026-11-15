@@ -138,7 +138,9 @@ async def run_spike(
     reports: list[OperationReport] = []
     requests_made = 0
     probe_date = now.date().isoformat()
-    page_size = matrix.meta.page_size or 0
+    page_size = matrix.meta.page_size
+    if not isinstance(page_size, int) or isinstance(page_size, bool) or page_size <= 0:
+        raise AdapterError  # invalid matrix pagination: fail before any HTTP or evidence
 
     for op in sorted(matrix.operations, key=lambda item: item.id):
         if op.kind != "read":
