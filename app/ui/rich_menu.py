@@ -5,10 +5,20 @@ artwork. Callback payloads are never trusted for authorization.
 """
 
 from pathlib import Path
+from typing import Any
 
 from aiogram.types import FSInputFile, InputMediaPhoto, InputRichMessage, InputRichMessageMedia
 
 from app.domain.models import User
+from app.services.rich_views import screen_parts
+from app.ui.rich_detail import (
+    bookings_view,
+    broadcasts_view,
+    questions_view,
+    report_view,
+    tasks_view,
+    team_view,
+)
 
 ART = Path(__file__).resolve().parent / "assets"
 
@@ -55,7 +65,15 @@ def view_role(actor: User) -> str:
 
 
 def can_open(actor: User, screen: str) -> bool:
-    return screen in (key for key, _ in NAV[view_role(actor)])
+    try:
+        base, mode, _ = screen_parts(screen)
+    except ValueError:
+        return False
+    if base not in dict(NAV[view_role(actor)]):
+        return False
+    if mode == "detail" and base == "team" and not actor.is_owner:
+        return False
+    return True
 
 
 def _button(label: str, target: str, *, active: bool = False) -> str:
@@ -67,8 +85,23 @@ def _row(values: list[str]) -> str:
     return f"<tg-button-row>{''.join(values)}</tg-button-row>"
 
 
-def _body(actor: User, screen: str) -> str:
+def _body(actor: User, screen: str, data: dict[str, Any]) -> str:
     role = view_role(actor)
+    base, _, _ = screen_parts(screen)
+    if base == "tasks" and "tasks" in data:
+        return tasks_view(data)
+    if base == "broadcasts" and ("broadcasts" in data or "broadcast" in data):
+        return broadcasts_view(data)
+    if base == "team" and ("members" in data or "member" in data):
+        return team_view(data, actor)
+    if base == "reports" and "counts" in data:
+        return report_view(data, owner=True)
+    if base == "question" and "questions" in data:
+        return questions_view(data)
+    if base == "bookings" and "booking_requests" in data:
+        return bookings_view(data)
+    if base == "home" and role in ("admin", "owner") and "counts" in data:
+        return report_view(data, owner=actor.is_owner)
     if screen == "home":
         if role == "client":
             return (
@@ -108,6 +141,7 @@ def _body(actor: User, screen: str) -> str:
             "<h3>Расписание занятий</h3>"
             "<p>Данные ещё не подтверждены: вымышленные занятия и места не отображаются.</p>"
             "<p>До завершения T-103 запись оформляется через администратора.</p>"
+            + _row([_button("Запросить запись", "compose:booking", active=True)])
             + _row([_button("Задать вопрос", "question")])
         )
     if screen == "bookings":
@@ -115,6 +149,7 @@ def _body(actor: User, screen: str) -> str:
             "<h3>Мои записи</h3>"
             "<p>Раздел появится после привязки клиента и подтверждения чтения records.list.</p>"
             "<p>Пока бот не обещает запись, отмену или наличие мест.</p>"
+            + _row([_button("Оставить заявку администратору", "compose:booking", active=True)])
         )
     if screen == "lessons":
         return (
@@ -126,6 +161,7 @@ def _body(actor: User, screen: str) -> str:
             "<h3>Аренда залов</h3>"
             "<p>Большой зал, малый зал и чайная. Стоимость зависит от дня и времени.</p>"
             "<p>Свободные окна пока не подтверждены. Для брони обратитесь к администратору.</p>"
+            + _row([_button("Запросить аренду", "compose:rent", active=True)])
             + _row([_button("Написать администратору", "question")])
         )
     if screen == "question":
@@ -175,7 +211,7 @@ def _body(actor: User, screen: str) -> str:
     raise ValueError("unknown view")
 
 
-def render(actor: User, screen: str) -> InputRichMessage:
+def render(actor: User, screen: str, data: dict[str, Any] | None = None) -> InputRichMessage:
     if not can_open(actor, screen):
         raise ValueError("screen outside role")
     role = view_role(actor)
@@ -185,8 +221,9 @@ def render(actor: User, screen: str) -> InputRichMessage:
         '<img src="tg://photo?id=studio"/>',
     ]
     navigation = NAV[role]
-    top.append(_row([_button(label, key, active=key == screen) for key, label in navigation]))
-    top.append(_body(actor, screen))
+    base, _, _ = screen_parts(screen)
+    top.append(_row([_button(label, key, active=key == base) for key, label in navigation]))
+    top.append(_body(actor, screen, data or {}))
     top.append("<p><i>YCLIENTS: только подтверждённые операции чтения.</i></p>")
     return InputRichMessage(
         html="\n".join(top),

@@ -19,6 +19,7 @@ from aiogram.exceptions import (
     TelegramServerError,
 )
 from aiogram.types import (
+    ForceReply,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
@@ -57,7 +58,7 @@ class TelegramSender:
                 is_owner=payload["is_owner"],
                 news_opt_in=payload["news_opt_in"],
             )
-            rich = render_rich_menu(actor, payload["screen"])
+            rich = render_rich_menu(actor, payload["screen"], payload.get("view_data"))
             if row["kind"] == "ui.rich.edit":
                 await self.bot.edit_message_text(
                     chat_id=actor.telegram_user_id,
@@ -106,6 +107,8 @@ class TelegramSender:
                 markup = InlineKeyboardMarkup.model_validate(raw_markup)
             elif "keyboard" in raw_markup:
                 markup = ReplyKeyboardMarkup.model_validate(raw_markup)
+            elif raw_markup.get("force_reply") is True:
+                markup = ForceReply.model_validate(raw_markup)
             else:
                 markup = ReplyKeyboardRemove.model_validate(raw_markup)
         if "photo_file_id" in payload:
