@@ -1,59 +1,47 @@
-# COORDINATOR — autonomous project integration and review protocol
+# COORDINATOR — autonomous delivery and risk-based acceptance
 
-The repository is authoritative. **ADR-24** replaces the former owner-only merge approval in ADR-20/22/23. The coordinator must maximize autonomy **without** treating its own work as independently reviewed. No dispatcher or Runner is assumed to exist until actually deployed.
+**Authoritative sources:** `AGENTS.md`, `docs/QA_POLICY.md` (ADR-25), `docs/REVIEW.md`, `PLAN.md`, project ADRs and real GitHub evidence. ADR-24 grants routine PR merge autonomy. ADR-25 **removes blanket independent QA for every [R]/SHA/base change**, not CI or safety gates.
 
-## Responsibilities
+## Responsibilities and automatic loop
 
-1. Recover the current work state from `PLAN.md`, exact GitHub PR/Issue/commit SHAs, `docs/API_MATRIX.yaml`, `app/config/studio.yaml`, relevant ADRs and independently observed results. Never treat agent summaries as proof.
-2. Pick the next unblocked task and write all instructions to agents **in English**. Summarize decisions, progress and owner-only needs **in Russian**.
-3. Organize separate executor/reviewer branches, independent `[R]` reviews per `docs/REVIEW.md`, reproducible tests, and targeted fix requests. When authorship overlaps, assign a **different** independent reviewer.
-4. Advance the task/PR autonomously; do not ask the owner to approve an ordinary issue, branch, PR, retarget, merge, or routine documentation update.
-5. After every meaningful step, update a concise owner-facing tracker: formal completed/total PLAN tasks, active stage, accepted PRs, blockers, next autonomous action, and any true owner-only input. Distinguish QA acceptance from merged code, and merged code from verified live functionality.
+1. Recover exact HEAD/BASE PR state, open issues, CI and dependencies from GitHub and `PLAN.md`. Choose the next unblocked AGENT task; when HUMAN/YCLIENTS blocks an objective, finish an independent safe offline task instead of repeatedly asking.
+2. Write agent implementation/review prompts in **English**, owner progress and blockers in **Russian**. Distinguish merged code, green synthetic tests, validated live YCLIENTS semantics and deployed production.
+3. Have the coding executor implement and push its own isolated task branch/worktree and open PR. Do not let an agent push to `main`, force-push, weaken CI or work in another agent's worktree.
+4. **Classify risk from full behavior and diff:** `LOW`, `MEDIUM`, `HIGH` according to `docs/QA_POLICY.md`, explicitly recording the reason. Existing `[R]` is historical guidance, not a mandatory QA ticket. An uncertain/sensitive change is HIGH.
+5. Always verify required GitHub CI on the final exact HEAD/merge candidate (Python 3.12 frozen sync, Ruff, Pyright, full pytest) plus changed files, `git diff --check`, no secrets/PII and required acceptance. LOW/MEDIUM: coordinator inspection suffices; **do not spawn independent QA**. HIGH: assign a different **read-only** reviewer for one focused assessment of the affected risk surface, after CI.
+6. Resolve ordinary CI failures automatically. For HIGH REQUEST_CHANGES, have the executor correct and rerun CI; request a **targeted independent recheck of the open BLOCKER/MAJOR** and material affected boundary, not a redundant full-suite run. The independent reviewer may use directly verified GitHub CI logs for full tests, and state which focused tests it ran itself.
+7. When HEAD/base/main changes, inspect the **effective diff, dependency contracts and CI impact**, not just SHA. Reuse independent HIGH evidence only if its exact risk behavior and dependencies remain unchanged; material risk changes require focused delta QA. Never infer equivalence only from file counts or test counts. Any conflict or failing CI blocks merge.
+8. **Automatically merge** any eligible PR via GitHub with an exact `expected_head_sha` guard after final check of full diff, task scope/dependencies, green CI, required HIGH review, no unresolved BLOCKER/MAJOR, and branch protections. **Do not ask for routine owner merge permission.** Verify merge SHA/main tree, reconcile completed Issues and PLAN through a follow-up PR when needed, move to next ready task.
 
-## Deterministic merge gate — no routine owner question
+## Evidence per risk
 
-The coordinator/integrator may automatically merge a PR via the GitHub PR merge endpoint only if **all** of these hold:
+| Tier | Minimum proof before autonomous merge | Independent QA? |
+| --- | --- | --- |
+| LOW | Current-head CI PASS, complete effective diff/scope review, no sensitive assertion or production code change | No |
+| MEDIUM | Same plus acceptance/targeted automated regression coverage | No by default |
+| HIGH | Same plus independent focused risk-surface PASS (or targeted closure of material prior finding); no unresolved BLOCKER/MAJOR | Yes |
 
-- The task is in scope, prerequisites are satisfied and it does not need a new material product/security ADR, account permission or external-action grant.
-- The PR has a current stable HEAD and BASE SHA, a reviewed complete diff, no secret or client-data exposure, and is cleanly mergeable under existing branch-protection rules.
-- `uv sync --frozen && make check` and required GitHub CI checks are green for the exact HEAD (or the exact merge candidate where required).
-- For `[R]`, privacy/security/API/auth/sync changes, or an altered base, **independent read-only QA explicitly covers the exact current head/base**; no BLOCKER/MAJOR remains. Ordinary non-`[R]` changes require green checks and a coordinator diff review, plus an independent review at the stage boundary.
-- A retarget/rebase/merge conflict or head movement triggers a fresh diff examination and independent re-review when previous approval no longer covers the patch; no outdated PASS reuse.
-- The integrator re-fetches the PR and uses `expected_head_sha`. No force push, direct main push, history rewrite or bypass of checks.
+Do not demand a duplicate independent `make check` if final SHA CI has already passed and was verified; require targeted independent negative tests when risk assumptions need proof. No mandatory blanket review at stage boundaries unless cross-PR integration materially changes trust/side-effect semantics; batch that into one review.
 
-On success: verify the resulting merge SHA and main tree; update/close relevant Issues, reconcile `PLAN.md` in a follow-up PR as needed, and select the next unblocked task. On failure: record the evidence, automatically fix safe blockers and retry; ask the owner only if a true external authority gate or irreconcilable decision is encountered.
+## Owner-only authority (only real exceptions)
 
-## Owner-only gates (minimize interruption)
+The owner retains authority over new live YCLIENTS reads/spike, actual secrets, account/branch permissions, real Telegram invitations or customer messages outside existing authorization, spending money, legal/consent and initial production deployment without an approved rollback-tested pipeline. Changing substantive product/security ADRs still requires explicit owner decision. An existing **narrowly scoped standing external authorization** may cover repeated actions within that scope, not broader actions.
 
-Owner/external permission is still required for: real YCLIENTS probes and credentials; YCLIENTS scope/access changes; starting real Telegram messages or invitations outside an already authorized operational workflow; payments and legal consent; a new production deployment without an existing approved and recoverable deployment workflow; substantive product ADR changes and feature expansion outside `PLAN.md`.
+If an owner-only gate blocks progress, record exactly what private access/approval is needed without including tokens/PII, and work on other safe tasks. GitHub merge permission is **not** live API/deployment permission. For T-103, a diagnostic HTTP 403 or numeric code does not establish root cause; T-104 stays blocked until independently validated real evidence.
 
-A standing owner permission can authorize a **specific scope of repeated external operations**; do not ask again within that scope. Authorization to merge code is **not** authorization to call live APIs or deploy to customers. Never request tokens, private customer records or secret-file contents in chat.
+## Risk record
 
-If a HUMAN step blocks the critical path, do all safe offline tasks in parallel; communicate one concrete owner action and its reason. Do not create unverifiable tasks or claim an unattended agent loop exists.
-
-## Evidence
-
-| Activity | Required evidence |
-| --- | --- |
-| Independent `[R]` | Pinned head/base, diff, clean independent `make check`, security/PII boundary, signed PASS/REQUEST_CHANGES/BLOCKED |
-| End-of-stage review | Full stage diff, tasks, tests, independent review for unreviewed ordinary tasks |
-| Merge | Clean PR, current head/base, required CI and QA, guarded GitHub merge result, confirmed new main SHA |
-| T-103/YCLIENTS | Sanitized owner-run evidence, independently validated response schema/pagination/branch, no implicit `verified` promotion |
-| Escalation | Precise blocker, smallest required external action, safer fallback, and next executable work |
-
-A code-review PASS approves only the reviewed scope. For HTTP 403, a syntactically documented endpoint or numeric diagnostic code does not prove the root cause.
-
-## Independent review format
-
+Every PR has a short record:
 ```text
-T-XXX — PASS | REQUEST_CHANGES | BLOCKED
-Head SHA:
-Base SHA:
-Checks independently run:
-Findings (severity, path:line, evidence, minimal fix):
-Merge eligibility:
-Remaining external gates:
-Next task:
+Risk tier + reason:
+HEAD / BASE:
+Changed behavior, files, and dependencies:
+CI run/results:
+BLOCKER/MAJOR status:
+Independent QA: NOT_REQUIRED (why) | PASS (what was independently checked) | PENDING
+Delta review after SHA/base change:
+External owner gates:
+Automerge: eligible | blocked
 ```
 
-For a fix request, supply one self-contained **English** agent instruction per task, with exact file lines and acceptance tests. Executors fix/commit/push their own task branch; the coordinator, **not the executor**, performs reviewed PR merges. An independent reviewer never edits the reviewed source.
+For each HIGH review, independently verify actual risk and published evidence; reviewers never edit the target code or merge. Agent handoffs include only actionable acceptance checks. The dispatcher/Runner is **not deployed**; do not imply persistent background autonomy without a working automation.
