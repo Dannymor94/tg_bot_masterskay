@@ -6,12 +6,14 @@ against a random per-user state marker, never client-declared action fields.
 
 import json
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 
 from app.db.models import kv, outbox
+from app.domain.calendar import selectable
 from app.domain.models import OutboxDraft
 from app.services.access import AccessDenied, AccessService
 from app.services.outbox import enqueue
@@ -57,12 +59,24 @@ class RichComposeService(AccessService):
         now: datetime,
         *,
         segment: str = "",
+        selected_date: str = "",
         menu_message_id: int = 0,
     ) -> None:
         if action not in TITLES or not request_id or len(request_id) > 100 or menu_message_id <= 0:
             raise ValueError("invalid compose request")
         if action == "announce" and segment not in self.cfg.broadcasts.segments:
             raise ValueError("unknown announcement segment")
+        parsed: date | None = None
+        if selected_date:
+            if action not in ("booking", "rent"):
+                raise ValueError("date not supported for action")
+            try:
+                parsed = date.fromisoformat(selected_date)
+            except ValueError as error:
+                raise ValueError("invalid request date") from error
+            today = now.astimezone(ZoneInfo(self.cfg.studio.timezone)).date()
+            if parsed.isoformat() != selected_date or not selectable(parsed, today):
+                raise ValueError("request date outside calendar horizon")
         async with self.transaction(now) as db:
             actor = await self.user(db, actor_id)
             if action == "task":
@@ -84,10 +98,12 @@ class RichComposeService(AccessService):
             ).scalar_one_or_none() is not None:
                 return
             marker = secrets.token_hex(5)
-            label = f"{TITLES[action]} · {marker}"
+            context = f" на {parsed.strftime('%d.%m.%Y')}" if parsed is not None else ""
+            label = f"{TITLES[action]}{context} · {marker}"
             state = {
                 "action": action,
                 "segment": segment,
+                "selected_date": selected_date,
                 "label": label,
                 "expires": (now + PROMPT_TTL).astimezone(UTC).isoformat(),
                 "menu_message_id": menu_message_id,

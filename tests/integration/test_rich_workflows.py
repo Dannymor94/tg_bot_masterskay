@@ -225,7 +225,7 @@ def test_owner_team_revoke_needs_authorization_and_reports_are_local(task_db, mo
             assert any(m["id"] == 4 for m in team["members"])
             assert 'data="ui:team:detail:4"' in (render(owner(), "team", team).html or "")
             assert not can_open(User(telegram_user_id=2, role="admin"), "team:detail:4")
-            assert "Загрузка залов" in (render(owner(), "reports", report).html or "")
+            assert "не загрузка залов YCLIENTS" in (render(owner(), "reports", report).html or "")
             await dispatcher.feed_update(bot, callback(2, "team:revoke:4", 301))
             async with engine.connect() as db:
                 assert not (

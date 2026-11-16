@@ -205,3 +205,86 @@ def report_view(data: dict[str, Any], *, owner: bool = False) -> str:
         "пока не подтверждены.</p>"
     )
     return "\n".join(lines)
+
+
+REPORT_TITLES = {
+    "R1": "Запросы аренды",
+    "R2": "Отмены посещений",
+    "R3": "Вопросы и заявки",
+    "R4": "Проверка привязки",
+    "R5": "Низкая оценка",
+    "R6": "Свободные окна (события)",
+    "R8": "Ручные задачи",
+}
+
+
+def report_detail_view(data: dict[str, Any]) -> str:
+    """Show what the local numbers mean and what the bot cannot yet know."""
+    info = data["report"]
+    mode = info["mode"]
+    lines = [
+        "<h3>Отчёт «Мастерской»</h3>",
+        row(
+            button("Обзор", "ui:reports", primary=mode == "summary"),
+            button("Задачи", "ui:reports:tasks", primary=mode == "tasks"),
+            button("Рассылки", "ui:reports:news", primary=mode == "news"),
+            button("Люди", "ui:reports:people", primary=mode == "people"),
+        ),
+    ]
+    if mode in ("summary", "tasks"):
+        s = info["states"]
+        lines.extend(
+            (
+                "<h4>Очередь задач</h4>",
+                f"<p>Ожидают исполнителя: <b>{s['open']}</b></p>",
+                f"В работе у команды: <b>{s['taken']}</b>",
+                f"Выполнены за всё время: <b>{s['done']}</b>",
+            )
+        )
+        if mode == "tasks":
+            lines.append("<h4>По направлениям</h4>")
+            for code, name in REPORT_TITLES.items():
+                c = info["codes"].get(code, {})
+                active = c.get("open", 0) + c.get("taken", 0)
+                if active or c.get("done", 0):
+                    lines.append(
+                        f"<p>{name}: <b>{active} активных</b> · {c.get('done', 0)} закрыто</p>"
+                    )
+            lines.append(row(button("Открыть очередь", "ui:tasks")))
+        else:
+            lines.append("<p>Цифры взяты из локальной таблицы задач бота.</p>")
+    if mode in ("summary", "news"):
+        n = info["news"]
+        lines.extend(
+            (
+                "<h4>Новости и рассылки</h4>",
+                f"<p>Черновиков: <b>{n.get('draft', 0)}</b> · "
+                f"в отправке: <b>{n.get('sending', 0)}</b> · "
+                f"завершены: <b>{n.get('done', 0)}</b></p>",
+                f"<p>Доставлено сообщений: <b>{info['delivered']}</b> · "
+                f"ошибки доставки: <b>{info['failed']}</b></p>",
+            )
+        )
+        if mode == "news":
+            lines.append("<p>Счётчики накоплены только по рассылкам этого бота.</p>")
+            lines.append(row(button("Открыть рассылки", "ui:broadcasts")))
+    if mode in ("summary", "people"):
+        r = info["roles"]
+        lines.extend(
+            (
+                "<h4>Пользователи бота</h4>",
+                f"<p>Администраторы: <b>{r.get('admin', 0)}</b> · "
+                f"преподаватели: <b>{r.get('teacher', 0)}</b> · "
+                f"клиенты: <b>{r.get('client', 0)}</b></p>",
+                f"<p>Подписаны на новости: <b>{info['subscribers']}</b></p>",
+            )
+        )
+        if mode == "people":
+            lines.append("<p>Считаются активные Telegram ID, не посетители CRM.</p>")
+            lines.append(row(button("Открыть команду", "ui:team")))
+    lines.append(
+        "<p><i>Данные обновляются при открытии отчёта. Это реальные локальные "
+        "показатели бота, не выручка, посещаемость и не загрузка залов YCLIENTS. "
+        "CRM-отчёты недоступны до проверки API.</i></p>"
+    )
+    return "\n".join(lines)
