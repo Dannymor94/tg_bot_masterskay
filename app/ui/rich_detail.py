@@ -229,6 +229,7 @@ def report_detail_view(data: dict[str, Any]) -> str:
             button("Задачи", "ui:reports:tasks", primary=mode == "tasks"),
             button("Рассылки", "ui:reports:news", primary=mode == "news"),
             button("Люди", "ui:reports:people", primary=mode == "people"),
+            button("Доставка", "ui:reports:operations", primary=mode == "operations"),
         ),
     ]
     if mode in ("summary", "tasks"):
@@ -282,6 +283,44 @@ def report_detail_view(data: dict[str, Any]) -> str:
         if mode == "people":
             lines.append("<p>Считаются активные Telegram ID, не посетители CRM.</p>")
             lines.append(row(button("Открыть команду", "ui:team")))
+    if mode in ("summary", "operations"):
+        d = info["delivery"]
+        total_overdue = sum(info["overdue"].values())
+        lines.extend(
+            (
+                "<h4>Оперативный контроль</h4>",
+                f"<p>Просроченных задач: <b>{total_overdue}</b> · "
+                f"сообщений в очереди: <b>{d['pending']}</b></p>",
+                f"<p>Ошибки отправки: <b>{d['failed']}</b> · "
+                f"заблокировано получателями: <b>{d['blocked']}</b></p>",
+            )
+        )
+        if mode == "operations":
+            lines.append("<h4>Просроченные по направлениям</h4>")
+            if total_overdue:
+                for code, name in REPORT_TITLES.items():
+                    count = info["overdue"].get(code, 0)
+                    if count:
+                        lines.append(f"<p>{name}: <b>{count}</b></p>")
+            else:
+                lines.append("<p>Задач с истёкшим сроком нет.</p>")
+            lines.extend(
+                (
+                    "<p>Просроченными считаются открытые и взятые задачи "
+                    "с указанным сроком, который уже прошёл. Задачи без срока не учитываются.</p>",
+                    "<h4>Очередь сообщений Telegram</h4>",
+                    f"<p>Ожидают отправки: <b>{d['pending']}</b></p>",
+                    f"<p>Приняты API Telegram: <b>{d['sent']}</b></p>",
+                    f"<p>Ошибки: <b>{d['failed']}</b> · "
+                    f"получатель недоступен: <b>{d['blocked']}</b> · "
+                    f"отменены: <b>{d['cancelled']}</b> · "
+                    f"отписка: <b>{d['unsubscribed']}</b></p>",
+                    "<p>Считаются все сообщения бота, включая служебные и экраны меню. "
+                    "Принято API не означает, что человек прочитал сообщение. "
+                    "Счётчики накопительные, а не за сегодня.</p>",
+                    row(button("Открыть очередь задач", "ui:tasks")),
+                )
+            )
     lines.append(
         "<p><i>Данные обновляются при открытии отчёта. Это реальные локальные "
         "показатели бота, не выручка, посещаемость и не загрузка залов YCLIENTS. "

@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from app.db.models import broadcasts, tasks, users
+from app.db.models import broadcasts, outbox, tasks, users
 from app.domain.calendar import calendar_model
 from app.domain.models import User
 
@@ -34,6 +34,7 @@ def screen_parts(screen: str) -> tuple[str, str, int]:
             "tasks",
             "news",
             "people",
+            "operations",
         )
     ):
         return "reports", parts[1], 0
@@ -106,6 +107,7 @@ async def view_data(
     screen: str,
     *,
     today: date | None = None,
+    as_of: datetime | None = None,
 ) -> dict[str, Any]:
     """Compute the current display after authentication and current role check."""
     base, mode, page = screen_parts(screen)
@@ -355,6 +357,36 @@ async def view_data(
                     )
                 ).scalar_one()
             )
+        if mode in ("", "operations"):
+            instant = as_of or datetime.now(UTC)
+            if instant.utcoffset() is None:
+                raise ValueError("aware report time required")
+            waiting = (
+                await db.execute(
+                    select(outbox.c.state, func.count().label("n")).group_by(outbox.c.state)
+                )
+            ).all()
+            states = {str(state): int(count) for state, count in waiting}
+            report["delivery"] = {
+                "pending": states.get("pending", 0) + states.get("summary", 0),
+                "failed": states.get("failed", 0),
+                "blocked": states.get("blocked", 0),
+                "sent": states.get("sent", 0),
+                "cancelled": states.get("cancelled", 0),
+                "unsubscribed": states.get("unsubscribed", 0),
+            }
+            overdue = (
+                await db.execute(
+                    select(tasks.c.code, func.count().label("n"))
+                    .where(
+                        tasks.c.state.in_(("open", "taken")),
+                        tasks.c.due_at.is_not(None),
+                        tasks.c.due_at < instant,
+                    )
+                    .group_by(tasks.c.code)
+                )
+            ).all()
+            report["overdue"] = {str(code): int(count) for code, count in overdue}
         return result
     if base in ("home", "reports") and actor.role == "admin":
         values = {}
