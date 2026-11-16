@@ -78,11 +78,17 @@ def build_router(
                 await tasks.manual(actor.id, str(message.message_id), text, clock())
                 view = "tasks"
             elif action in ("question", "booking"):
-                body = f"{BOOKING_PREFIX}{text}" if action == "booking" else text
+                date_prefix = (
+                    f"Дата {state['selected_date']}. " if state.get("selected_date") else ""
+                )
+                body = f"{BOOKING_PREFIX}{date_prefix}{text}" if action == "booking" else text
                 await questions.ask(actor.id, str(message.message_id), body, clock())
                 view = "question" if action == "question" else "bookings"
             elif action == "rent":
-                await rent.request(actor.id, str(message.message_id), text, clock())
+                date_prefix = (
+                    f"Дата {state['selected_date']}. " if state.get("selected_date") else ""
+                )
+                await rent.request(actor.id, str(message.message_id), date_prefix + text, clock())
                 view = "rent"
             elif action == "announce":
                 new_id = await broadcasts.create(
@@ -123,7 +129,10 @@ def build_router(
                     query.id,
                     parts[1],
                     clock(),
-                    segment=parts[2] if len(parts) == 3 else "",
+                    segment=parts[2] if len(parts) == 3 and parts[1] == "announce" else "",
+                    selected_date=(
+                        parts[2] if len(parts) == 3 and parts[1] in ("booking", "rent") else ""
+                    ),
                     menu_message_id=message.message_id,
                 )
             elif screen.startswith("task:"):

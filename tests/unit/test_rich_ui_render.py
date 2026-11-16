@@ -12,6 +12,7 @@ def test_render_distinct_role_navigation_and_packaged_image(role):
     actor = User(
         telegram_user_id=7, role="admin" if role == "owner" else role, is_owner=role == "owner"
     )
+    image_paths = set()
     for screen, label in NAV[role]:
         rich = render(actor, screen)
         assert rich.html is not None
@@ -22,13 +23,15 @@ def test_render_distinct_role_navigation_and_packaged_image(role):
         media = rich.media[0].media.media
         assert isinstance(media, FSInputFile)
         assert Path(media.path).is_file()
-        assert Path(media.path).name == f"{role}.png"
+        assert Path(media.path).name == f"{role}-{screen}.png"
+        image_paths.add(str(media.path))
         for different, items in NAV.items():
             if different == role:
                 continue
             for key, _ in items:
                 if key not in dict(NAV[role]):
                     assert f'data="ui:{key}"' not in rich.html
+    assert len(image_paths) == len(NAV[role])
 
 
 def test_forbidden_screen_and_no_unverified_business_claims():

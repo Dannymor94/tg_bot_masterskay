@@ -6,12 +6,14 @@ the queued UI outbox payload.
 """
 
 from collections.abc import Mapping
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db.models import broadcasts, tasks, users
+from app.domain.calendar import calendar_model
 from app.domain.models import User
 
 PAGE_SIZE = 4
@@ -24,6 +26,35 @@ BOOKING_PREFIX = "Запрос записи на занятие: "
 def screen_parts(screen: str) -> tuple[str, str, int]:
     """Return a validated base, filter and page; no arbitrary SQL identifiers."""
     parts = screen.split(":")
+    if (
+        len(parts) == 2
+        and parts[0] == "reports"
+        and parts[1]
+        in (
+            "tasks",
+            "news",
+            "people",
+        )
+    ):
+        return "reports", parts[1], 0
+    if len(parts) in (2, 3) and parts[0] in ("schedule", "rent"):
+        if len(parts) == 2 and len(parts[1]) == 7 and parts[1][4] == "-":
+            try:
+                month = date.fromisoformat(parts[1] + "-01")
+            except ValueError:
+                pass
+            else:
+                if 2020 <= month.year <= 2100:
+                    return parts[0], "month", month.year * 100 + month.month
+        if len(parts) == 3 and parts[1] == "day":
+            try:
+                selected = date.fromisoformat(parts[2])
+            except ValueError:
+                pass
+            else:
+                if 2020 <= selected.year <= 2100 and selected.isoformat() == parts[2]:
+                    return parts[0], "day", int(parts[2].replace("-", ""))
+        raise ValueError("invalid calendar screen")
     if (
         len(parts) == 3
         and parts[0] == "tasks"
@@ -69,9 +100,35 @@ def _task_summary(task: Mapping[Any, Any], actor: User) -> dict[str, Any]:
     }
 
 
-async def view_data(db: AsyncConnection, actor: User, screen: str) -> dict[str, Any]:
+async def view_data(
+    db: AsyncConnection,
+    actor: User,
+    screen: str,
+    *,
+    today: date | None = None,
+) -> dict[str, Any]:
     """Compute the current display after authentication and current role check."""
     base, mode, page = screen_parts(screen)
+    if base in ("schedule", "rent") and (
+        (base == "schedule" and actor.role == "client")
+        or (base == "rent" and actor.role == "teacher")
+    ):
+        day = today or datetime.now(UTC).date()
+        if mode == "month":
+            month = date(page // 100, page % 100, 1)
+            selected = None
+        elif mode == "day":
+            selected = date(page // 10000, page // 100 % 100, page % 100)
+            month = selected.replace(day=1)
+        else:
+            month = day.replace(day=1)
+            selected = None
+        try:
+            model = calendar_model(day, month, selected)
+        except ValueError:
+            model = calendar_model(day, day.replace(day=1))
+            model["notice"] = "Дата вне доступного периода выбора."
+        return {"calendar": model}
     if base == "tasks" and actor.role == "admin":
         predicate = (
             tasks.c.state.in_(["open", "taken"])
@@ -240,6 +297,65 @@ async def view_data(db: AsyncConnection, actor: User, screen: str) -> dict[str, 
                 ]
             }
         return {"members": []}
+    if base == "reports" and actor.is_owner and actor.role == "admin":
+        result: dict[str, Any] = {"report": {"mode": mode or "summary"}}
+        report = result["report"]
+        if mode in ("", "tasks"):
+            rows = (
+                await db.execute(
+                    select(tasks.c.code, tasks.c.state, func.count().label("n")).group_by(
+                        tasks.c.code, tasks.c.state
+                    )
+                )
+            ).all()
+            by_state = {"open": 0, "taken": 0, "done": 0}
+            by_code: dict[str, dict[str, int]] = {}
+            for code, state, count in rows:
+                by_state[str(state)] = by_state.get(str(state), 0) + int(count)
+                item = by_code.setdefault(str(code), {"open": 0, "taken": 0, "done": 0})
+                item[str(state)] = int(count)
+            report.update(states=by_state, codes=by_code)
+        if mode in ("", "news"):
+            rows = (
+                await db.execute(
+                    select(
+                        broadcasts.c.state,
+                        func.count().label("n"),
+                        func.sum(broadcasts.c.sent).label("sent"),
+                        func.sum(broadcasts.c.failed).label("failed"),
+                    )
+                    .where(broadcasts.c.kind == "announcement")
+                    .group_by(broadcasts.c.state)
+                )
+            ).all()
+            report.update(
+                news={str(state): int(n) for state, n, _, _ in rows},
+                delivered=sum(int(sent or 0) for _, _, sent, _ in rows),
+                failed=sum(int(failed or 0) for _, _, _, failed in rows),
+            )
+        if mode in ("", "people"):
+            rows = (
+                await db.execute(
+                    select(users.c.role, func.count().label("n"))
+                    .where(users.c.access_revoked.is_(False), users.c.blocked_at.is_(None))
+                    .group_by(users.c.role)
+                )
+            ).all()
+            report["roles"] = {str(role): int(count) for role, count in rows}
+            report["subscribers"] = int(
+                (
+                    await db.execute(
+                        select(func.count())
+                        .select_from(users)
+                        .where(
+                            users.c.news_opt_in.is_(True),
+                            users.c.access_revoked.is_(False),
+                            users.c.blocked_at.is_(None),
+                        )
+                    )
+                ).scalar_one()
+            )
+        return result
     if base in ("home", "reports") and actor.role == "admin":
         values = {}
         for state in ("open", "taken", "done"):
@@ -256,7 +372,11 @@ async def view_data(db: AsyncConnection, actor: User, screen: str) -> dict[str, 
                     await db.execute(
                         select(func.count())
                         .select_from(users)
-                        .where(users.c.news_opt_in.is_(True), users.c.access_revoked.is_(False))
+                        .where(
+                            users.c.news_opt_in.is_(True),
+                            users.c.access_revoked.is_(False),
+                            users.c.blocked_at.is_(None),
+                        )
                     )
                 ).scalar_one()
             )

@@ -1,6 +1,6 @@
 """Authenticated menu navigation, committed atomically to the existing outbox."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -40,7 +40,10 @@ class RichMenuService(AccessService):
 
 
 async def render_menu_delivery(
-    db: AsyncConnection, row: dict[str, object]
+    db: AsyncConnection,
+    row: dict[str, object],
+    *,
+    today: date | None = None,
 ) -> dict[str, object] | None:
     """Re-authorize at actual delivery time, not only at callback enqueue time."""
     actor_id = row["telegram_user_id"]
@@ -82,6 +85,6 @@ async def render_menu_delivery(
             "role": actor.role,
             "is_owner": actor.is_owner,
             "news_opt_in": actor.news_opt_in,
-            "view_data": await view_data(db, actor, screen),
+            "view_data": await view_data(db, actor, screen, today=today),
         },
     }

@@ -9,6 +9,7 @@ import json
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from aiogram.exceptions import (
@@ -185,7 +186,9 @@ async def send_one(
                 )
             elif row["kind"] in ("ui.rich.new", "ui.rich.edit") and not blocked:
                 rendered = await render_menu_delivery(
-                    connection, {str(key): value for key, value in row.items()}
+                    connection,
+                    {str(key): value for key, value in row.items()},
+                    today=now.astimezone(ZoneInfo(cfg.studio.timezone)).date(),
                 )
             if blocked:
                 state = "blocked"

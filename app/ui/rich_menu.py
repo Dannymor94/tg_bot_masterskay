@@ -11,10 +11,12 @@ from aiogram.types import FSInputFile, InputMediaPhoto, InputRichMessage, InputR
 
 from app.domain.models import User
 from app.services.rich_views import screen_parts
+from app.ui.rich_calendar import calendar_view
 from app.ui.rich_detail import (
     bookings_view,
     broadcasts_view,
     questions_view,
+    report_detail_view,
     report_view,
     tasks_view,
     team_view,
@@ -96,10 +98,14 @@ def _body(actor: User, screen: str, data: dict[str, Any]) -> str:
         return team_view(data, actor)
     if base == "reports" and "counts" in data:
         return report_view(data, owner=True)
+    if base == "reports" and "report" in data:
+        return report_detail_view(data)
     if base == "question" and "questions" in data:
         return questions_view(data)
     if base == "bookings" and "booking_requests" in data:
         return bookings_view(data)
+    if base in ("schedule", "rent") and "calendar" in data:
+        return calendar_view(data, rental=base == "rent")
     if base == "home" and role in ("admin", "owner") and "counts" in data:
         return report_view(data, owner=actor.is_owner)
     if screen == "home":
@@ -229,7 +235,7 @@ def render(actor: User, screen: str, data: dict[str, Any] | None = None) -> Inpu
         html="\n".join(top),
         media=[
             InputRichMessageMedia(
-                id="studio", media=InputMediaPhoto(media=FSInputFile(ART / f"{role}.png"))
+                id="studio", media=InputMediaPhoto(media=FSInputFile(ART / f"{role}-{base}.png"))
             )
         ],
     )
